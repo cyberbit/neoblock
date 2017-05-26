@@ -5,6 +5,7 @@
 import PyCmdMessenger, time, sched, os, threading, json, cryptography
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
+from websocket import create_connection
 
 # Grab Pushbullet API key from environment
 API_KEY = os.environ.get('PUSHBULLET_API_KEY')
@@ -25,6 +26,13 @@ class App(Tk):
         
         # Initial sync schedule is off
         self.doSync = False
+        
+        # Hues for apps
+        self.appHues = {
+            "default": 0,
+            "com.snapchat.android": 64,
+            "com.pushbullet.android": 96
+        }
         
         self.quit = Button(
            frame, text="QUIT", fg="red", command=frame.quit
@@ -58,17 +66,29 @@ class App(Tk):
         self.brightness_off = Button(frame, text="Display off", command=lambda: self.cmd_set_brightness(0))
         self.brightness_off.grid(row=4, sticky=W+E)
         
-        self.brightness_low = Button(frame, text="Low Brightness (32)", command=lambda: self.cmd_set_brightness(32))
+        self.brightness_low = Button(frame, text="Low brightness (32)", command=lambda: self.cmd_set_brightness(32))
         self.brightness_low.grid(row=4, column=1, sticky=W+E)
         
-        self.brightness_normal = Button(frame, text="Normal Brightness (64)", command=lambda: self.cmd_set_brightness(64))
+        self.brightness_normal = Button(frame, text="Normal brightness (64)", command=lambda: self.cmd_set_brightness(64))
         self.brightness_normal.grid(row=4, column=2, sticky=W+E)
         
-        self.brightness_high = Button(frame, text="High Brightness (128)", command=lambda: self.cmd_set_brightness(128))
+        self.brightness_high = Button(frame, text="High brightness (128)", command=lambda: self.cmd_set_brightness(128))
         self.brightness_high.grid(row=4, column=3, sticky=W+E)
         
-        self.pushbullet_test = Button(frame, text="Grab Pushbullet user", command=self.pushbulletTest)
+        self.pushbullet_test = Button(frame, text="Start PushBullet watchdog", command=self.pushbulletWatchdog)
         self.pushbullet_test.grid(row=5, sticky=W+E)
+        
+        self.color_breathe_cancel = Button(frame, text="Cancel color breathe", command=self.cmd_color_breathe_cancel)
+        self.color_breathe_cancel.grid(row=6, sticky=W+E)
+        
+        self.color_breathe_red = Button(frame, text="Color breathe (red)", command=lambda: self.cmd_color_breathe(0))
+        self.color_breathe_red.grid(row=6, column=1, sticky=W+E)
+        
+        self.color_breathe_green = Button(frame, text="Color breathe (green)", command=lambda: self.cmd_color_breathe(96))
+        self.color_breathe_green.grid(row=6, column=2, sticky=W+E)
+        
+        self.color_breathe_blue = Button(frame, text="Color breathe (blue)", command=lambda: self.cmd_color_breathe(160))
+        self.color_breathe_blue.grid(row=6, column=3, sticky=W+E)
         
         # Ready signal (plus dramatic pause)
         self.cmd_ready()
@@ -79,41 +99,53 @@ class App(Tk):
     
     def cmd_ready(self):
         print(" * CMD_READY: Client ready")
-        # self.cmd.send("CMD_READY", "Client ready")
-        # print(self.cmd.receive())
+        self.cmd.send("CMD_READY", "Client ready")
+        print(self.cmd.receive())
     
     def cmd_ack(self):
         print(" * CMD_ACK: Command acknowledged")
-        # self.cmd.send("CMD_ACK", "Command acknowledged")
-        # print(self.cmd.receive())
+        self.cmd.send("CMD_ACK", "Command acknowledged")
+        print(self.cmd.receive())
     
     def cmd_success(self):
         print(" * CMD_SUCCESS: Command successful!")
-        # self.cmd.send("CMD_SUCCESS", "Command successful!")
-        # print(self.cmd.receive())
+        self.cmd.send("CMD_SUCCESS", "Command successful!")
+        print(self.cmd.receive())
     
     def cmd_error(self):
         print(" * CMD_ERROR: Command encountered an error")
-        # self.cmd.send("CMD_ERROR", "Command encountered an error")
-        # print(self.cmd.receive())
+        self.cmd.send("CMD_ERROR", "Command encountered an error")
+        print(self.cmd.receive())
     
     def cmd_time_sync(self):
         print(" * CMD_TIME_SYNC: Requesting current time")
-        # self.cmd.send("CMD_TIME_SYNC", "Requesting current time")
-        # print(self.cmd.receive()) # CMD_TIME_SYNC_RETURN
-        # print(self.cmd.receive()) # CMD_SUCCESS
+        self.cmd.send("CMD_TIME_SYNC", "Requesting current time")
+        print(self.cmd.receive()) # CMD_TIME_SYNC_RETURN
+        print(self.cmd.receive()) # CMD_SUCCESS
     
     def cmd_time_sync_return(self):
         print(" * CMD_TIME_SYNC_RETURN: Sending time sync...")
-        # self.cmd.send("CMD_TIME_SYNC_RETURN", int(time.time()) + 60 * 60 * -5) # adjust for UTC-5
-        # print(self.cmd.receive()) # CMD_ACK
-        # print(self.cmd.receive()) # CMD_SUCCESS or CMD_ERROR
+        self.cmd.send("CMD_TIME_SYNC_RETURN", int(time.time()) + 60 * 60 * -5) # adjust for UTC-5
+        print(self.cmd.receive()) # CMD_ACK
+        print(self.cmd.receive()) # CMD_SUCCESS or CMD_ERROR
     
     def cmd_set_brightness(self, v):
         print(" * CMD_SET_BRIGHTNESS: Sending brightness value...")
-        # self.cmd.send("CMD_SET_BRIGHTNESS", v)
-        # print(self.cmd.receive()) # CMD_ACK
-        # print(self.cmd.receive()) # CMD_SUCCESS
+        self.cmd.send("CMD_SET_BRIGHTNESS", v)
+        print(self.cmd.receive()) # CMD_ACK
+        print(self.cmd.receive()) # CMD_SUCCESS
+    
+    def cmd_color_breathe(self, v):
+        print(" * CMD_COLOR_BREATHE: Sending color breathe...")
+        self.cmd.send("CMD_COLOR_BREATHE", v)
+        print(self.cmd.receive()) # CMD_ACK
+        print(self.cmd.receive()) # CMD_SUCCESS
+    
+    def cmd_color_breathe_cancel(self):
+        print(" * CMD_COLOR_BREATHE_CANCEL: Cancelling color breathe...")
+        self.cmd.send("CMD_COLOR_BREATHE_CANCEL")
+        print(self.cmd.receive()) # CMD_ACK
+        print(self.cmd.receive()) # CMD_SUCCESS
     
     def startSchedule(self):
         print(" * Time sync scheduled");
@@ -136,8 +168,8 @@ class App(Tk):
             self.after(1*60*60*1000, lambda: self.scheduleSync(sc))
             # self.after(3000, lambda: self.scheduleSync(sc))
     
-    def pushbulletTest(self):
-        pb = PushBullet(API_KEY)
+    def pushbulletWatchdog(self):
+        pb = PushBullet(API_KEY, {'https': os.environ['http_proxy']})
         
         # Grab user
         self.user = pb.getUser()
@@ -165,15 +197,41 @@ class App(Tk):
     def handlePush(self, data):
         push = None
         
-        if (data['push']['encrypted'] == True):
-            print(" $ Encoded push received. Decoding...")
+        # Only handle ephemerals
+        if data['type'] == "push":
+            if data['push']['encrypted'] == True:
+                print(" $ Encoded push received. Decoding...")
+                
+                push = json.loads(self.decryptData(data['push']['ciphertext']))
+            else:
+                push = data['push']
             
-            push = json.loads(self.decryptData(data['push']['ciphertext']))
+            if push['type'] == "mirror":
+                print(" $ New notification!")
+                print(" $   ID:", push['notification_id'])
+                print(" $   App:", push['package_name'])
+                print(" $   Title:", push['title'])
+                print(" $   Body:", push['body'])
+                
+                # Save last push
+                self.push = push
+                
+                # Send color breathe
+                self.cmd_color_breathe(self.appToHue(self.push['package_name']))
+            
+            elif push['type'] == "dismissal":
+                print(" $ Dismissed notification!")
+                print(" $   ID:", push['notification_id'])
+                print(" $   App:", push['package_name'])
+                
+                # Cancel color breathe
+                self.cmd_color_breathe_cancel()
+    
+    def appToHue(self, package_name):
+        if package_name in self.appHues:
+            return self.appHues[package_name]
         else:
-            push = data['push']
-        
-        print(" $ Package name:")
-        print(push['package_name'])
+            return self.appHues['default']
     
     def decryptData(self, data):
         assert self.encryption_key
@@ -211,7 +269,7 @@ print(" * Connecting to Arduino...")
 # Initialize an ArduinoBoard instance.  This is where you specify baud rate and
 # serial timeout.  If you are using a non ATmega328 board, you might also need
 # to set the data sizes (bytes for integers, longs, floats, and doubles).  
-arduino = PyCmdMessenger.ArduinoBoard("COM9",baud_rate=9600)
+arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=9600)
 
 # List of command names (and formats for their associated arguments). These must
 # be in the same order as in the sketch.
@@ -221,7 +279,9 @@ commands = [["CMD_READY", "s"],
             ["CMD_ERROR", "s"],
             ["CMD_TIME_SYNC", "s"],
             ["CMD_TIME_SYNC_RETURN", "s"],
-            ["CMD_SET_BRIGHTNESS", "s"]]
+            ["CMD_SET_BRIGHTNESS", "s"],
+            ["CMD_COLOR_BREATHE", "s"],
+            ["CMD_COLOR_BREATHE_CANCEL", "s"]]
 
 # Initialize the messenger
 cmd = PyCmdMessenger.CmdMessenger(arduino,commands)

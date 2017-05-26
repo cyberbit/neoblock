@@ -43,15 +43,26 @@ CmdMessenger cmd = CmdMessenger(Serial);
 // Flag signaling client is ready
 bool clientReady = false;
 
+// Flags for animations
+bool anim_fade = true;
+bool anim_rainbow_border = false;
+bool anim_tix = false;
+
+bool anim_breathe = false;
+int anim_breathe_hue = 0;
+uint8_t anim_breathe_frame = 0;
+
 // Known commands
 enum {
-    CMD_READY,              // 0
-    CMD_ACK,                // 1
-    CMD_SUCCESS,            // 2
-    CMD_ERROR,              // 3
-    CMD_TIME_SYNC,          // 4
-    CMD_TIME_SYNC_RETURN,   // 5
-    CMD_SET_BRIGHTNESS      // 6
+    CMD_READY,                  // 0
+    CMD_ACK,                    // 1
+    CMD_SUCCESS,                // 2
+    CMD_ERROR,                  // 3
+    CMD_TIME_SYNC,              // 4
+    CMD_TIME_SYNC_RETURN,       // 5
+    CMD_SET_BRIGHTNESS,         // 6
+    CMD_COLOR_BREATHE,          // 7
+    CMD_COLOR_BREATHE_CANCEL    // 8
 };
 
 const int BORDER_SIZE = 22;
@@ -83,6 +94,8 @@ void attachCommandCallbacks() {
     cmd.attach(CMD_TIME_SYNC, onTimeSync);
     cmd.attach(CMD_TIME_SYNC_RETURN, onTimeSyncReturn);
     cmd.attach(CMD_SET_BRIGHTNESS, onSetBrightness);
+    cmd.attach(CMD_COLOR_BREATHE, onColorBreathe);
+    cmd.attach(CMD_COLOR_BREATHE_CANCEL, onColorBreatheCancel);
 }
 
 // Unknown command received
@@ -187,9 +200,40 @@ void onSetBrightness() {
   FastLED.setBrightness(brightness);
 
   cmd.sendCmdStart(CMD_SUCCESS);
-  cmd.sendCmdfArg("Brightness set to %d", brightness);
+  cmd.sendCmdfArg("Brightness set to %d", brightnessConstraint);
   cmd.sendCmdEnd();
   onSend();
+}
+
+void onColorBreathe() {
+    onGet();
+    
+    int hue = cmd.readInt16Arg();
+
+    cmd.sendCmdStart(CMD_ACK);
+    cmd.sendCmdfArg("Starting color breathe (hue %d)...", hue);
+    cmd.sendCmdEnd();
+    onSend();
+
+    // Start animation
+    anim_breathe = true;
+    anim_breathe_hue = hue;
+
+    cmd.sendCmd(CMD_SUCCESS, F("Color breathe started"));
+    onSend();
+}
+
+void onColorBreatheCancel() {
+    onGet();
+
+    cmd.sendCmd(CMD_ACK);
+    onSend();
+
+    anim_breathe = false;
+    anim_breathe_frame = 0;
+    
+    cmd.sendCmd(CMD_SUCCESS, F("Color breathe cancelled"));
+    onSend();
 }
 
 // Callback for every sent command
@@ -210,7 +254,7 @@ void setup() {
     attachCommandCallbacks();
 
     // Seed RNG with analog noise
-    randomSeed(analogRead(0));
+    random16_set_seed(analogRead(0));
     
     // Set up LEDs
     FastLED.addLeds<NEOPIXEL, PIN>(leds, NUM_LEDS);
@@ -228,9 +272,47 @@ void loop() {
     // Process serial data
     cmd.feedinSerialData();
     
+    // Time not set
+    if (timeStatus() == timeNotSet) {
+        anim_tix = false;
+        
+        if (clientReady) {
+            anim_rainbow_border = true;
+        }
+    }
+
+    // Time is set
+    else {
+        anim_tix = true;
+        anim_rainbow_border = false;
+    }
+
+    anim();
+    
     //rainbowBorder();
     //binaryClock();
-    tixClock();
+    //tixClock();
+}
+
+void anim() {
+    if (anim_fade) {
+        fadeToBlackBy(leds, NUM_LEDS, 50);
+    }
+
+    if (anim_rainbow_border) {
+        rainbowBorder();
+    }
+
+    if (anim_tix) {
+        tixClockDisplay();
+    }
+    
+    if (anim_breathe) {
+        colorBreathe();
+    }
+    
+    FastLED.show();
+    FastLED.delay(1000/FPS);
 }
 
 void rainbowBorder() {
@@ -242,11 +324,25 @@ void rainbowBorder() {
     if (pos > BORDER_SIZE - 1) pos = 0;
     
     // Display and delay
-    FastLED.show();
-    FastLED.delay(1000/FPS);
+    /*FastLED.show();
+    FastLED.delay(1000/FPS);*/
 }
 
-void binaryClock() {
+void colorBreathe() {
+    static uint8_t step = 2;
+    uint8_t brightness = ease8InOutApprox(anim_breathe_frame);
+
+    if (anim_breathe_frame == 256 - step) step = -2;
+    else if (anim_breathe_frame == 0) step = 2;
+
+    anim_breathe_frame += step;
+
+    for (int i = 0; i < NUM_LEDS; ++i) {
+        leds[i] = nblend(leds[i], CHSV(anim_breathe_hue, 200, 255), brightness);
+    }
+}
+
+/*void binaryClock() {
     if (Serial.available()) {
         processSyncMessage();
     }
@@ -257,9 +353,9 @@ void binaryClock() {
     //delay(1000);
     FastLED.show();
     FastLED.delay(1000/FPS);
-}
+}*/
 
-void binaryClockDisplay() {
+/*void binaryClockDisplay() {
     int timeHour = hour();
     int timeMinute = minute();
     int timeSecond = second();
@@ -282,20 +378,20 @@ void binaryClockDisplay() {
         if (bitRead(timeSecond, i)) leds[secondPos[i]] = CHSV(160, 200, 255);
     }
     //Serial.println();
-}
+}*/
 
 void tixClock() {
     fadeToBlackBy(leds, NUM_LEDS, 50);
 
     // Time not set
-    if (timeStatus() == timeNotSet) {
-        wait();
+    /*if (timeStatus() == timeNotSet) {
+        anim_rainbow_border = true
     }
 
     // Time is set
     else {
         tixClockDisplay();
-    }
+    }*/
     
     FastLED.show();
     FastLED.delay(1000/FPS);
@@ -304,7 +400,7 @@ void tixClock() {
 void wait() {
     // Only show border if client is ready
     if (clientReady) {
-        rainbowBorder();
+        anim_rainbow_border = true;
     }
 }
 
@@ -418,7 +514,7 @@ void tixClockDisplay() {
     }
 }
 
-void processSyncMessage() {
+/*void processSyncMessage() {
     unsigned long pctime;
     const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013
     
@@ -428,9 +524,9 @@ void processSyncMessage() {
             setTime(pctime); // Sync Arduino clock to the time received on the serial port
         }
     }
-}
+}*/
 
 // Preform Fisher-Yates shuffle of array
 void shuffle(int *o, int i) {
-    for (int j, x; i; j = random(i), x = o[--i], o[i] = o[j], o[j] = x) {}
+    for (int j, x; i; j = random8(i), x = o[--i], o[i] = o[j], o[j] = x) {}
 }
