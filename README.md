@@ -1,5 +1,5 @@
 # NeoBlock
-Alternative implementation of a TiX clock, with advanced options in a Python interface when connected over USB.
+Alternative implementation of a TiX clock using NeoPixels on an Arduino, with advanced options in a Python interface when connected over USB.
 
 ## Arduino requirements:
  - **NeoPixels**. The code is configured to use the NeoPixel Shield, but with some effort it can be configured for any pixel layout.
