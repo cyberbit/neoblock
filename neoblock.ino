@@ -2,8 +2,12 @@
 #include <TimeLib.h>
 #include <FastLED.h>
 
+#define BAUD            19200
+
 #define TIME_HEADER     "T"
 #define TIME_REQUEST    7
+
+#define DEFAULT_TIME    1357041600 // Jan 1 2013
 
 #define HOUR_BITS       5
 #define MINUTE_BITS     6
@@ -49,8 +53,10 @@ bool anim_rainbow_border = false;
 bool anim_tix = false;
 
 bool anim_breathe = false;
-int anim_breathe_hue = 0;
+uint8_t anim_breathe_hue = 0;
 uint8_t anim_breathe_frame = 0;
+
+bool anim_gx = false;
 
 // Known commands
 enum {
@@ -62,11 +68,14 @@ enum {
     CMD_TIME_SYNC_RETURN,       // 5
     CMD_SET_BRIGHTNESS,         // 6
     CMD_COLOR_BREATHE,          // 7
-    CMD_COLOR_BREATHE_CANCEL    // 8
+    CMD_COLOR_BREATHE_CANCEL,   // 8
+    CMD_GX,                     // 9
+    CMD_GX_CANCEL,              // 10
+    CMD_BINARY_TEST             // 11
 };
 
-const int BORDER_SIZE = 22;
-const int border[BORDER_SIZE] = {
+const uint8_t BORDER_SIZE = 22;
+const uint8_t border[BORDER_SIZE] = {
     0, 1, 2, 3, 4, 5, 6, 7,         // Top
     15, 23, 31,                     // Right
     39, 38, 37, 36, 35, 34, 33, 32, // Bottom
@@ -74,19 +83,19 @@ const int border[BORDER_SIZE] = {
 };
 
 // Positions for binaryClock
-const int hourPos[HOUR_BITS]        = {0, 1, 2, 3, 4};
-const int minutePos[MINUTE_BITS]    = {8, 9, 10, 11, 12, 13};
-const int secondPos[SECOND_BITS]    = {16, 17, 18, 19, 20, 21};
+const uint8_t hourPos[HOUR_BITS]        = {0, 1, 2, 3, 4};
+const uint8_t minutePos[MINUTE_BITS]    = {8, 9, 10, 11, 12, 13};
+const uint8_t secondPos[SECOND_BITS]    = {16, 17, 18, 19, 20, 21};
 
 // Positions for tixClock
-int hhPos[HH_TIX] = {1, 2, 3};
-int hPos[H_TIX]   = {17, 18, 19, 25, 26, 27, 33, 34, 35};
-int mmPos[MM_TIX] = {4, 5, 6, 12, 13, 14};
-int mPos[M_TIX]   = {20, 21, 22, 28, 29, 30, 36, 37, 38};
-int ssPos[S_TIX]  = {0, 8, 16, 24, 32};
-int sPos[SS_TIX]  = {7, 15, 23, 31, 39};
-int sendPos = 9;
-int receivePos = 10;
+uint8_t hhPos[HH_TIX] = {1, 2, 3};
+uint8_t hPos[H_TIX]   = {17, 18, 19, 25, 26, 27, 33, 34, 35};
+uint8_t mmPos[MM_TIX] = {4, 5, 6, 12, 13, 14};
+uint8_t mPos[M_TIX]   = {20, 21, 22, 28, 29, 30, 36, 37, 38};
+uint8_t ssPos[S_TIX]  = {0, 8, 16, 24, 32};
+uint8_t sPos[SS_TIX]  = {7, 15, 23, 31, 39};
+uint8_t sendPos = 9;
+uint8_t receivePos = 10;
 
 void attachCommandCallbacks() {
     cmd.attach(onUnknownCmd);
@@ -96,6 +105,9 @@ void attachCommandCallbacks() {
     cmd.attach(CMD_SET_BRIGHTNESS, onSetBrightness);
     cmd.attach(CMD_COLOR_BREATHE, onColorBreathe);
     cmd.attach(CMD_COLOR_BREATHE_CANCEL, onColorBreatheCancel);
+    cmd.attach(CMD_GX, onGx);
+    cmd.attach(CMD_GX_CANCEL, onGxCancel);
+    cmd.attach(CMD_BINARY_TEST, onBinaryTest);
 }
 
 // Unknown command received
@@ -121,18 +133,18 @@ void onTimeSync() {
     onGet();
 
     // Get weekday and month strings
-    char dayString[4],
+    /*char dayString[4],
        monthString[4];
        
     strcpy(dayString, dayShortStr(weekday()));
-    strcpy(monthString, monthShortStr(month()));
+    strcpy(monthString, monthShortStr(month()));*/
 
     // Send current time
     cmd.sendCmd(CMD_TIME_SYNC_RETURN, now());
     onSend();
-
-    // Send current formatted time
-    cmd.sendCmdStart(CMD_SUCCESS);
+    
+    // Send current formatted time (memory expensive)
+    /*cmd.sendCmdStart(CMD_SUCCESS);
     cmd.sendCmdfArg("Current time is %02d:%02d:%02d %s %d %s %d",
         hour(),
         minute(),
@@ -142,15 +154,14 @@ void onTimeSync() {
         monthString,
         year());
     cmd.sendCmdEnd();
-    onSend();
+    onSend();*/
 }
 
 // Receive time sync
 void onTimeSyncReturn() {
     onGet();
     
-    unsigned long pctime = (unsigned long) cmd.readInt32Arg();
-    const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013
+    unsigned long pctime = cmd.readBinArg<unsigned long>();
     
     cmd.sendCmd(CMD_ACK, F("Time sync received"));
     onSend();
@@ -160,13 +171,14 @@ void onTimeSyncReturn() {
         setTime(pctime);
 
         // Get weekday and month strings
-        char dayString[4],
+        /*char dayString[4],
            monthString[4];
            
         strcpy(dayString, dayShortStr(weekday()));
-        strcpy(monthString, monthShortStr(month()));
+        strcpy(monthString, monthShortStr(month()));*/
 
-        cmd.sendCmdStart(CMD_SUCCESS);
+        // Send new formatted time (memory expensive)
+        /*cmd.sendCmdStart(CMD_SUCCESS);
         cmd.sendCmdfArg("Time synced to %02d:%02d:%02d %s %d %s %d",
             hour(),
             minute(),
@@ -175,7 +187,9 @@ void onTimeSyncReturn() {
             day(),
             monthString,
             year());
-        cmd.sendCmdEnd();
+        cmd.sendCmdEnd();*/
+
+        cmd.sendCmd(CMD_SUCCESS, F("Time synced"));
         onSend();
         return;
     }
@@ -188,31 +202,34 @@ void onTimeSyncReturn() {
 void onSetBrightness() {
   onGet();
 
-  int brightness = cmd.readInt16Arg();
-  int brightnessConstraint = constrain(brightness, 0, 255);
+  uint8_t brightness = cmd.readInt16Arg();
+  uint8_t brightnessConstraint = constrain(brightness, 0, 255);
   
-  cmd.sendCmdStart(CMD_ACK);
+  /*cmd.sendCmdStart(CMD_ACK);
   cmd.sendCmdfArg("Setting brightness to %d (constrained to %d)...", brightness, brightnessConstraint);
-  cmd.sendCmdEnd();
+  cmd.sendCmdEnd();*/
+  cmd.sendCmd(CMD_ACK, F("Setting brightness..."));
   onSend();
 
   // Set brightness
   FastLED.setBrightness(brightness);
 
-  cmd.sendCmdStart(CMD_SUCCESS);
+  /*cmd.sendCmdStart(CMD_SUCCESS);
   cmd.sendCmdfArg("Brightness set to %d", brightnessConstraint);
-  cmd.sendCmdEnd();
+  cmd.sendCmdEnd();*/
+  cmd.sendCmd(CMD_SUCCESS, F("Brightness set"));
   onSend();
 }
 
 void onColorBreathe() {
     onGet();
     
-    int hue = cmd.readInt16Arg();
+    uint8_t hue = cmd.readInt16Arg();
 
-    cmd.sendCmdStart(CMD_ACK);
+    /*cmd.sendCmdStart(CMD_ACK);
     cmd.sendCmdfArg("Starting color breathe (hue %d)...", hue);
-    cmd.sendCmdEnd();
+    cmd.sendCmdEnd();*/
+    cmd.sendCmd(CMD_ACK, F("Starting color breathe..."));
     onSend();
 
     // Start animation
@@ -236,6 +253,103 @@ void onColorBreatheCancel() {
     onSend();
 }
 
+/*void onGx() {
+    onGet();
+
+    // First argument is length of graphic (up to NUM_LEDS)
+    uint8_t length = cmd.readInt16Arg();
+    uint8_t arg;
+
+    // Read specified number of arguments
+    for (int i = 0; i < length; ++i) {
+        arg = cmd.readInt16Arg();
+        /*cmd.sendCmdStart(CMD_ACK);
+        cmd.sendCmdfArg("Received argument %d of %d: %d", i, length, arg);
+        cmd.sendCmdEnd();
+        onSend();*
+
+        // Set LEDs to hue based on argument
+        leds[i].setHue(arg);
+    }
+
+    anim_gx = true;
+
+    cmd.sendCmd(CMD_SUCCESS, F("Graphics set"));
+    onSend();
+}*/
+
+void onGx() {
+    cmd.sendCmd(CMD_ACK, F("Reading graphics"));
+
+    uint8_t length = cmd.readBinArg<uint8_t>();
+    uint8_t *arg = cmd.readStringArg();
+
+    cmd.sendCmdStart(CMD_ACK);
+    cmd.sendCmdfArg("Length: %d", length);
+    cmd.sendCmdEnd();
+
+    /*cmd.sendCmdStart(CMD_ACK);
+    cmd.sendCmdfArg("Length: %d", length);
+    cmd.sendCmdEnd();*/
+    for (uint8_t i = 0; i < length; ++i) {
+        cmd.sendCmd(CMD_ACK, arg[i]);
+    }
+
+//    for (int i = 0; i < length; ++i) {
+        /*arg = cmd.readBinArg<uint8_t>();
+        cmd.sendCmdStart(CMD_ACK);
+        cmd.sendCmdfArg("Received %u", pixels[i]);
+        cmd.sendCmdEnd();*/
+
+        // Set LEDs to hue based on argument
+//        leds[i].setHue((uint8_t) arg[i]);
+
+        // Read raw bytes from Serial into LEDs
+        memcpy(leds, arg, length);
+//    }
+
+    anim_gx = true;
+
+    cmd.sendCmd(CMD_SUCCESS, F("Graphics set"));
+}
+
+void onGxCancel() {
+    onGet();
+
+    cmd.sendCmd(CMD_ACK);
+    onSend();
+
+    anim_gx = false;
+
+    cmd.sendCmd(CMD_SUCCESS, F("Graphics cancelled"));
+    onSend();
+}
+
+void onBinaryTest() {
+    cmd.sendCmd(CMD_ACK, F("Reading graphics"));
+
+    uint8_t length = cmd.readBinArg<uint8_t>();
+    uint8_t arg;
+
+    /*cmd.sendCmdStart(CMD_ACK);
+    cmd.sendCmdfArg("Length: %d", length);
+    cmd.sendCmdEnd();*/
+
+    for (uint8_t i = 0; i < length; ++i) {
+        arg = cmd.readBinArg<uint8_t>();
+        /*cmd.sendCmdStart(CMD_ACK);
+        cmd.sendCmdfArg("Received %u", pixels[i]);
+        cmd.sendCmdEnd();*/
+
+        // Set LEDs to hue based on argument
+        leds[i] = CHSV(arg, 255, 255);
+    }
+
+    anim_gx = true;
+
+    cmd.sendCmd(CMD_SUCCESS, F("Graphics set"));
+}
+
 // Callback for every sent command
 void onSend() {
     leds[sendPos] = CHSV(100, 255, 255);
@@ -247,7 +361,7 @@ void onGet() {
 }
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(BAUD);
 
     // Configure commander
     cmd.printLfCr();
@@ -295,24 +409,35 @@ void loop() {
 }
 
 void anim() {
-    if (anim_fade) {
-        fadeToBlackBy(leds, NUM_LEDS, 50);
-    }
-
-    if (anim_rainbow_border) {
-        rainbowBorder();
-    }
-
-    if (anim_tix) {
-        tixClockDisplay();
+    // When showing graphics, avoid spending cycles on other animations
+    if (anim_gx) {
+        /**
+         * Graphics are read directly from Serial to LEDs to save memory.
+         * Thus, there is no graphics display routine.
+         */
     }
     
-    if (anim_breathe) {
-        colorBreathe();
+    else {
+        if (anim_fade) {
+            fadeToBlackBy(leds, NUM_LEDS, 50);
+        }
+    
+        if (anim_rainbow_border) {
+            rainbowBorder();
+        }
+    
+        if (anim_tix) {
+            tixClockDisplay();
+        }
+        
+        if (anim_breathe) {
+            colorBreathe();
+        }
+        
     }
     
-    FastLED.show();
     FastLED.delay(1000/FPS);
+    FastLED.show();
 }
 
 void rainbowBorder() {
@@ -408,7 +533,7 @@ void tixClockDisplay() {
     static int counter = TIX_UPDATE;
     static int secCounter = TIX_UPDATE_SEC;
 
-    static int timeHour, timeMinute, timeSecond,
+    static uint8_t timeHour, timeMinute, timeSecond,
         hh, h, mm, m, ss, s;
     
     // Only update time when needed
@@ -527,6 +652,6 @@ void tixClockDisplay() {
 }*/
 
 // Preform Fisher-Yates shuffle of array
-void shuffle(int *o, int i) {
+void shuffle(int8_t *o, int i) {
     for (int j, x; i; j = random8(i), x = o[--i], o[i] = o[j], o[j] = x) {}
 }

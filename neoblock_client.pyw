@@ -2,7 +2,7 @@
 # Python program using the library to interface with the arduino sketch above.
 # ------------------------------------------------------------------------------
 
-import PyCmdMessenger, time, sched, os, threading, json, cryptography
+import PyCmdMessenger, time, sched, os, threading, json, cryptography, array
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
 from websocket import create_connection
@@ -78,6 +78,15 @@ class App(Tk):
         self.pushbullet_test = Button(frame, text="Start PushBullet watchdog", command=self.pushbulletWatchdog)
         self.pushbullet_test.grid(row=5, sticky=W+E)
         
+        self.binary_arg_test = Button(frame, text="Test binary argument", command=self.cmd_binary_test)
+        self.binary_arg_test.grid(row=5, column=1, sticky=W+E)
+        
+        self.gx_test = Button(frame, text="Test graphics", command=self.cmd_gx_test)
+        self.gx_test.grid(row=5, column=2, sticky=W+E)
+        
+        self.gx_cancel = Button(frame, text="Cancel graphics", command=self.cmd_gx_cancel)
+        self.gx_cancel.grid(row=5, column=3, sticky=W+E)
+        
         self.color_breathe_cancel = Button(frame, text="Cancel color breathe", command=self.cmd_color_breathe_cancel)
         self.color_breathe_cancel.grid(row=6, sticky=W+E)
         
@@ -120,14 +129,14 @@ class App(Tk):
     def cmd_time_sync(self):
         print(" * CMD_TIME_SYNC: Requesting current time")
         self.cmd.send("CMD_TIME_SYNC", "Requesting current time")
-        print(self.cmd.receive()) # CMD_TIME_SYNC_RETURN
-        print(self.cmd.receive()) # CMD_SUCCESS
+        print(self.cmd.receive("s")) # CMD_TIME_SYNC_RETURN
+        # print(self.cmd.receive("s")) # CMD_SUCCESS
     
     def cmd_time_sync_return(self):
         print(" * CMD_TIME_SYNC_RETURN: Sending time sync...")
         self.cmd.send("CMD_TIME_SYNC_RETURN", int(time.time()) + 60 * 60 * -5) # adjust for UTC-5
-        print(self.cmd.receive()) # CMD_ACK
-        print(self.cmd.receive()) # CMD_SUCCESS or CMD_ERROR
+        print(self.cmd.receive("s")) # CMD_ACK
+        print(self.cmd.receive("s")) # CMD_SUCCESS or CMD_ERROR
     
     def cmd_set_brightness(self, v):
         print(" * CMD_SET_BRIGHTNESS: Sending brightness value...")
@@ -144,6 +153,47 @@ class App(Tk):
     def cmd_color_breathe_cancel(self):
         print(" * CMD_COLOR_BREATHE_CANCEL: Cancelling color breathe...")
         self.cmd.send("CMD_COLOR_BREATHE_CANCEL")
+        print(self.cmd.receive()) # CMD_ACK
+        print(self.cmd.receive()) # CMD_SUCCESS
+    
+    def cmd_binary_test(self):
+        print(" * CMD_BINARY_TEST: Sending binary arguments...")
+        self.cmd.send("CMD_BINARY_TEST", 40,
+            0, 5, 10, 15, 20, 25, 30, 35,
+            40, 45, 50, 55, 60, 65, 70, 75,
+            80, 85, 90, 95, 100, 105, 110, 115,
+            120, 125, 130, 135, 140, 145, 150, 155,
+            160, 165, 170, 175, 180, 185, 190, 195
+        )
+        print(self.cmd.receive()) # CMD_ACK (Reading graphics)
+        print(self.cmd.receive()) # CMD_SUCCESS (Graphics set)
+    
+    def cmd_gx_test(self):
+        print(" * CMD_GX: Sending data as string...")
+        self.cmd.send("CMD_GX", 3, "\x00\x7f\x7f")
+        
+        # Manually send bytes
+        # self.cmd.board.write(array.array('B', [
+        #     1, 5, 10, 15, 20, 25, 30, 35,
+        #     40, 45, 50, 55, 60, 65, 70, 75,
+        #     80, 85, 90, 95, 100, 105, 110, 115,
+        #     120, 125, 130, 135, 140, 145, 150, 155,
+        #     160, 165, 170, 175, 180, 185, 190, 195
+        # ]).tostring())
+        # self.cmd.board.write(array.array('B', [
+        #     255,0,0, 0,255,0, 0,0,255
+        # ]).tostring())
+        
+        print(self.cmd.receive()) # CMD_ACK (Reading graphics)
+        print(self.cmd.receive()) # CMD_ACK (Length)
+        print(self.cmd.receive()) # CMD_ACK (char 1)
+        print(self.cmd.receive()) # CMD_ACK (char 2)
+        print(self.cmd.receive()) # CMD_ACK (char 3)
+        print(self.cmd.receive()) # CMD_SUCCESS
+    
+    def cmd_gx_cancel(self):
+        print(" * CMD_GX_CANCEL: Cancelling graphics...")
+        self.cmd.send("CMD_GX_CANCEL");
         print(self.cmd.receive()) # CMD_ACK
         print(self.cmd.receive()) # CMD_SUCCESS
     
@@ -269,7 +319,7 @@ print(" * Connecting to Arduino...")
 # Initialize an ArduinoBoard instance.  This is where you specify baud rate and
 # serial timeout.  If you are using a non ATmega328 board, you might also need
 # to set the data sizes (bytes for integers, longs, floats, and doubles).  
-arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=9600)
+arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=19200)
 
 # List of command names (and formats for their associated arguments). These must
 # be in the same order as in the sketch.
@@ -278,10 +328,13 @@ commands = [["CMD_READY", "s"],
             ["CMD_SUCCESS", "s"],
             ["CMD_ERROR", "s"],
             ["CMD_TIME_SYNC", "s"],
-            ["CMD_TIME_SYNC_RETURN", "s"],
+            ["CMD_TIME_SYNC_RETURN", "L"],
             ["CMD_SET_BRIGHTNESS", "s"],
             ["CMD_COLOR_BREATHE", "s"],
-            ["CMD_COLOR_BREATHE_CANCEL", "s"]]
+            ["CMD_COLOR_BREATHE_CANCEL", "s"],
+            ["CMD_GX", "is"],                    # The parameter for CMD_GX is the number of bytes following (r, g, b)
+            ["CMD_GX_CANCEL", ""],
+            ["CMD_BINARY_TEST", "b*"]]
 
 # Initialize the messenger
 cmd = PyCmdMessenger.CmdMessenger(arduino,commands)
