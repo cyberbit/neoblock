@@ -2,7 +2,7 @@
 # Python program using the library to interface with the arduino sketch above.
 # ------------------------------------------------------------------------------
 
-import PyCmdMessenger, time, sched, os, threading, json, cryptography, array
+import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
 from websocket import create_connection
@@ -16,13 +16,16 @@ ENCRYPTION_PASSWORD = os.environ.get('PUSHBULLET_ENCRYPTION_PASSWORD')
 s = sched.scheduler(time.time, time.sleep)
 
 class App(Tk):
-    def __init__(self, cmd):
+    def __init__(self, cmd, arduino):
         Tk.__init__(self)
         frame = Frame(self)
         frame.pack()
         
         # PyCmdMessenger instance
         self.cmd = cmd
+        
+        # Arduino instance
+        self.arduino = arduino
         
         # Initial sync schedule is off
         self.doSync = False
@@ -81,8 +84,11 @@ class App(Tk):
         self.binary_arg_test = Button(frame, text="Test binary argument", command=self.cmd_binary_test)
         self.binary_arg_test.grid(row=5, column=1, sticky=W+E)
         
-        self.gx_test = Button(frame, text="Test graphics", command=self.cmd_gx_test)
-        self.gx_test.grid(row=5, column=2, sticky=W+E)
+        # self.gx_test = Button(frame, text="Test graphics", command=self.cmd_gx_test)
+        # self.gx_test.grid(row=5, column=2, sticky=W+E)
+        
+        self.gx_ex_test = Button(frame, text="Test experimental graphics", command=self.cmd_gx_ex)
+        self.gx_ex_test.grid(row=3, column=3, sticky=W+E)
         
         self.gx_cancel = Button(frame, text="Cancel graphics", command=self.cmd_gx_cancel)
         self.gx_cancel.grid(row=5, column=3, sticky=W+E)
@@ -100,11 +106,11 @@ class App(Tk):
         self.color_breathe_blue.grid(row=6, column=3, sticky=W+E)
         
         # Ready signal (plus dramatic pause)
-        self.cmd_ready()
-        time.sleep(2)
+        # self.cmd_ready()
+        # time.sleep(2)
         
         # Auto-schedule
-        self.startSchedule()
+        # self.startSchedule()
     
     def cmd_ready(self):
         print(" * CMD_READY: Client ready")
@@ -158,19 +164,60 @@ class App(Tk):
     
     def cmd_binary_test(self):
         print(" * CMD_BINARY_TEST: Sending binary arguments...")
-        self.cmd.send("CMD_BINARY_TEST", 40,
-            0, 5, 10, 15, 20, 25, 30, 35,
-            40, 45, 50, 55, 60, 65, 70, 75,
-            80, 85, 90, 95, 100, 105, 110, 115,
-            120, 125, 130, 135, 140, 145, 150, 155,
-            160, 165, 170, 175, 180, 185, 190, 195
-        )
-        print(self.cmd.receive()) # CMD_ACK (Reading graphics)
-        print(self.cmd.receive()) # CMD_SUCCESS (Graphics set)
+        for i in range(0, 40):
+            # Make array of 40 zeros
+            arr = [0] * 40
+            
+            # Set single pixel to cycled hue
+            arr[i] = i * 5
+            
+            self.cmd.send("CMD_BINARY_TEST", 40, *arr)
+            print(self.cmd.receive()) # CMD_ACK (Reading graphics)
+            print(self.cmd.receive()) # CMD_SUCCESS (Graphics set)
     
     def cmd_gx_test(self):
-        print(" * CMD_GX: Sending data as string...")
-        self.cmd.send("CMD_GX", 3, "\x00\x7f\x7f")
+        print(" * CMD_GX: Testing graphics...")
+        
+        num_leds = 10
+        
+        for i in range(0, num_leds):
+            print("start cmd")
+            
+            print("send CMD_GX")
+            self.cmd.send("CMD_GX", num_leds*3)
+            
+            print(self.cmd.receive()) # CMD_ACK (Reading graphics)
+            # print(self.cmd.receive()) # CMD_ACK (Length)
+            
+            # Make array of num_leds rgb(0, 0, 0) pixels
+            arr = [[0, 0, 0]] * num_leds
+            
+            # Set single pixel to watch
+            arr[i] = [255, 255, 255]
+            
+            print("write bytes")
+            self.cmd.board.write(array.array('B', [item for sublist in arr for item in sublist]).tostring())
+            
+            # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+            # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+            # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+            # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+            # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+            
+            for j in range(0, num_leds):
+                print(self.cmd.receive()) # CMD_ACK (byte echo)
+            
+            print("receive success")
+            print(self.cmd.receive()) # CMD_SUCCESS
+        
+        # self.cmd.board.write(b'9,3,\xff\x00\x00;')
+        # 
+        # print(self.cmd.receive()) # CMD_ACK (Reading graphics)
+        # print(self.cmd.receive()) # CMD_ACK (Length)
+        # print(self.cmd.receive()) # CMD_ACK (char 1)
+        # print(self.cmd.receive()) # CMD_ACK (char 2)
+        # print(self.cmd.receive()) # CMD_ACK (char 3)
+        # print(self.cmd.receive()) # CMD_SUCCESS
         
         # Manually send bytes
         # self.cmd.board.write(array.array('B', [
@@ -183,13 +230,104 @@ class App(Tk):
         # self.cmd.board.write(array.array('B', [
         #     255,0,0, 0,255,0, 0,0,255
         # ]).tostring())
+    
+    def cmd_gx_ex(self):
+        print("Testing experimental CMD_GX...")
         
-        print(self.cmd.receive()) # CMD_ACK (Reading graphics)
-        print(self.cmd.receive()) # CMD_ACK (Length)
-        print(self.cmd.receive()) # CMD_ACK (char 1)
-        print(self.cmd.receive()) # CMD_ACK (char 2)
-        print(self.cmd.receive()) # CMD_ACK (char 3)
-        print(self.cmd.receive()) # CMD_SUCCESS
+        num_leds = 40
+        
+        # Wave of colors to try
+        wave = [
+            [0, 0, 1],
+            [1, 0, 1],
+            [2, 0, 1],
+            [3, 0, 1],
+            [4, 0, 1],
+            [5, 0, 1],
+            [6, 0, 1],
+            [7, 0, 1],
+        ]
+        
+        for i in range(0, num_leds):
+            # Bytes use 8-bit color format:
+            # 
+            #       Bit     7  6  5  4  3  2  1  0
+            #       Data    R  R  R  G  G  G  B  B
+            #
+            # This allows the following values:
+            #
+            #       Red     0-7     << 5
+            #       Green   0-7     << 2
+            #       Blue    0-3     << 0
+            #
+            # Bitwise AND them together to get the 8-bit color.
+            
+            # Make array of num_leds 8-bit color pixels
+            # leds = [0] * num_leds
+            
+            # Make array of num_leds random 8-bit color pixels
+            leds = random.sample(range(0, 255), num_leds)
+            
+            # Set single pixel to some fancy color idk
+            # pixel = wave[i % 8]
+            # leds[i] = (pixel[0] << 5) | (pixel[1] << 2) | pixel[2];
+            # print(leds[i])
+            
+            # Send command
+            # 
+            # Byte format:
+            #   0       CMD_GX
+            #   1       length
+            #   2-n     data bytes
+            self.arduino.write(array.array('B', [
+                # Command header
+                9,
+                
+                # Data length
+                num_leds
+            ] + leds).tostring())
+            
+            # Wait for everything to write
+            self.arduino.comm.flush()
+            
+            # Data bytes
+            # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+            # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+            # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+            # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+            # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+            
+            # Read as many bytes as possible
+            raw_msg = []
+            msg_lines = []
+            
+            # print(self.arduino.readline())
+            
+            # return
+        
+            while True:
+                # print("loopy")
+                tmp = self.arduino.read()
+                
+                # print("post read")
+                
+                # print(tmp)
+                
+                # End of command
+                if tmp == b'\n' or tmp == b'':
+                    break
+                
+                elif tmp == b';':
+                    msg_lines.append(b''.join(raw_msg).decode("ascii"))
+                    raw_msg = []
+                
+                else:
+                    raw_msg.append(tmp)
+                
+                # time.sleep(0.05)
+            
+            # Output lines
+            print(*msg_lines, sep='\n')
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
@@ -319,7 +457,7 @@ print(" * Connecting to Arduino...")
 # Initialize an ArduinoBoard instance.  This is where you specify baud rate and
 # serial timeout.  If you are using a non ATmega328 board, you might also need
 # to set the data sizes (bytes for integers, longs, floats, and doubles).  
-arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=19200)
+arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=9600)
 
 # List of command names (and formats for their associated arguments). These must
 # be in the same order as in the sketch.
@@ -332,13 +470,13 @@ commands = [["CMD_READY", "s"],
             ["CMD_SET_BRIGHTNESS", "s"],
             ["CMD_COLOR_BREATHE", "s"],
             ["CMD_COLOR_BREATHE_CANCEL", "s"],
-            ["CMD_GX", "is"],                    # The parameter for CMD_GX is the number of bytes following (r, g, b)
+            ["CMD_GX", "i"],                    # The parameter for CMD_GX is the number of bytes following (r, g, b)
             ["CMD_GX_CANCEL", ""],
             ["CMD_BINARY_TEST", "b*"]]
 
 # Initialize the messenger
-cmd = PyCmdMessenger.CmdMessenger(arduino,commands)
+# cmd = PyCmdMessenger.CmdMessenger(arduino,commands)
 
 # Run app
-app = App(cmd)
+app = App(None, arduino)
 app.mainloop()
