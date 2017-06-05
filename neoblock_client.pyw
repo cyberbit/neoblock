@@ -2,7 +2,7 @@
 # Python program using the library to interface with the arduino sketch above.
 # ------------------------------------------------------------------------------
 
-import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random
+import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random, csv
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
 from websocket import create_connection
@@ -139,10 +139,37 @@ class App(Tk):
         # print(self.cmd.receive("s")) # CMD_SUCCESS
     
     def cmd_time_sync_return(self):
+        # print(" * CMD_TIME_SYNC_RETURN: Sending time sync...")
+        # self.cmd.send("CMD_TIME_SYNC_RETURN", int(time.time()) + 60 * 60 * -5) # adjust for UTC-5
+        # print(self.cmd.receive("s")) # CMD_ACK
+        # print(self.cmd.receive("s")) # CMD_SUCCESS or CMD_ERROR
         print(" * CMD_TIME_SYNC_RETURN: Sending time sync...")
-        self.cmd.send("CMD_TIME_SYNC_RETURN", int(time.time()) + 60 * 60 * -5) # adjust for UTC-5
-        print(self.cmd.receive("s")) # CMD_ACK
-        print(self.cmd.receive("s")) # CMD_SUCCESS or CMD_ERROR
+        
+        # Create bytes for timestamp
+        # (via https://stackoverflow.com/a/6188017/3402854)
+        timestamp = [(int(time.time()) + 60 * 60 * -5 >> i & 255) for i in (24,16,8,0)]
+        
+        self.arduino.write(array.array('B', [
+            # Command header
+            5
+        ] + timestamp).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Data bytes
+        # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+        # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+        # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+        # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+        # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+        
+        print(self.readCmd()) # CMD_ACK
+        print(self.readCmd()) # CMD_ACK (debug)
+        # print(self.readCmd()) # CMD_ACK (debug)
+        # print(self.readCmd()) # CMD_ACK (debug)
+        # print(self.readCmd()) # CMD_ACK (debug)
+        print(self.readCmd()) # CMD_SUCCESS or CMD_ERROR
     
     def cmd_set_brightness(self, v):
         print(" * CMD_SET_BRIGHTNESS: Sending brightness value...")
@@ -248,7 +275,26 @@ class App(Tk):
             [7, 0, 1],
         ]
         
-        for i in range(0, num_leds):
+        # Load graphic
+        graphicFile = open('bootup.csv')
+        
+        # Parse graphic
+        graphicCsv = csv.reader(graphicFile)
+        
+        graphic = []
+        
+        for frame in graphicCsv:
+            newFrame = []
+            
+            for color in frame:
+                newFrame.append(int(color))
+                
+            graphic.append(newFrame)
+        
+        frames = len(graphic)
+        
+        start = time.time()
+        for i in range(0, frames):
             # Bytes use 8-bit color format:
             # 
             #       Bit     7  6  5  4  3  2  1  0
@@ -266,12 +312,15 @@ class App(Tk):
             # leds = [0] * num_leds
             
             # Make array of num_leds random 8-bit color pixels
-            leds = random.sample(range(0, 255), num_leds)
+            # leds = random.sample(range(0, 255), num_leds)
             
             # Set single pixel to some fancy color idk
             # pixel = wave[i % 8]
             # leds[i] = (pixel[0] << 5) | (pixel[1] << 2) | pixel[2];
             # print(leds[i])
+            
+            # Read next frame of graphic
+            leds = graphic[i]
             
             # Send command
             # 
@@ -288,7 +337,7 @@ class App(Tk):
             ] + leds).tostring())
             
             # Wait for everything to write
-            self.arduino.comm.flush()
+            # self.arduino.comm.flush()
             
             # Data bytes
             # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
@@ -297,37 +346,18 @@ class App(Tk):
             # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
             # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
             
-            # Read as many bytes as possible
-            raw_msg = []
-            msg_lines = []
-            
-            # print(self.arduino.readline())
-            
-            # return
-        
-            while True:
-                # print("loopy")
-                tmp = self.arduino.read()
-                
-                # print("post read")
-                
-                # print(tmp)
-                
-                # End of command
-                if tmp == b'\n' or tmp == b'':
-                    break
-                
-                elif tmp == b';':
-                    msg_lines.append(b''.join(raw_msg).decode("ascii"))
-                    raw_msg = []
-                
-                else:
-                    raw_msg.append(tmp)
-                
-                # time.sleep(0.05)
+            # Read command
+            # result = self.readCmd()
             
             # Output lines
-            print(*msg_lines, sep='\n')
+            # print(*result, sep='\n')
+            
+            # Sleep a little (reduces FPS to ~10)
+            time.sleep(0.03)
+        
+        totalTime = time.time() - start
+        
+        print("Esimated FPS: ", frames / totalTime)
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
@@ -355,6 +385,38 @@ class App(Tk):
             # self.scheduleSync()
             self.after(1*60*60*1000, lambda: self.scheduleSync(sc))
             # self.after(3000, lambda: self.scheduleSync(sc))
+    
+    def readCmd(self):
+        # Read as many bytes as possible
+        raw_msg = []
+        msg_lines = []
+        
+        # print(self.arduino.readline())
+        
+        # return
+    
+        while True:
+            # break
+            # print("loopy")
+            tmp = self.arduino.read()
+            
+            # print("post read")
+            
+            # print(tmp)
+            
+            # End of command
+            if tmp == b'\n' or tmp == b'':
+                break
+            
+            elif tmp == b';':
+                # msg_lines.append(b''.join(raw_msg).decode("ascii"))
+                msg_lines.append(b''.join(raw_msg))
+                raw_msg = []
+            
+            else:
+                raw_msg.append(tmp)
+        
+        return msg_lines
     
     def pushbulletWatchdog(self):
         pb = PushBullet(API_KEY, {'https': os.environ['http_proxy']})
@@ -457,7 +519,7 @@ print(" * Connecting to Arduino...")
 # Initialize an ArduinoBoard instance.  This is where you specify baud rate and
 # serial timeout.  If you are using a non ATmega328 board, you might also need
 # to set the data sizes (bytes for integers, longs, floats, and doubles).  
-arduino = PyCmdMessenger.ArduinoBoard("COM4",baud_rate=9600)
+arduino = PyCmdMessenger.ArduinoBoard("COM5",baud_rate=9600)
 
 # List of command names (and formats for their associated arguments). These must
 # be in the same order as in the sketch.

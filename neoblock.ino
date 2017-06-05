@@ -1,25 +1,25 @@
 #include <CmdMessenger.h>
-//#include <TimeLib.h>
+#include <TimeLib.h>
 #include <FastLED.h>
 #include <stdio.h>
 
 #define BAUD            9600
 
-//#define TIME_HEADER     "T"
-//#define TIME_REQUEST    7
-//
-//#define DEFAULT_TIME    1357041600 // Jan 1 2013
-//
-//#define HOUR_BITS       5
-//#define MINUTE_BITS     6
-//#define SECOND_BITS     6
-//
-//#define HH_TIX          3
-//#define H_TIX           9
-//#define MM_TIX          6
-//#define M_TIX           9
-//#define SS_TIX          5
-//#define S_TIX           5
+#define TIME_HEADER     "T"
+#define TIME_REQUEST    7
+
+#define DEFAULT_TIME    1357041600 // Jan 1 2013
+
+#define HOUR_BITS       5
+#define MINUTE_BITS     6
+#define SECOND_BITS     6
+
+#define HH_TIX          3
+#define H_TIX           9
+#define MM_TIX          6
+#define M_TIX           9
+#define SS_TIX          5
+#define S_TIX           5
 
 #define PIN             6
 #define NUM_LEDS        40
@@ -27,8 +27,10 @@
 #define BRIGHTNESS      32
 #define FPS             60
 
-//#define TIX_UPDATE      FPS * 4
-//#define TIX_UPDATE_SEC  FPS * 1
+#define TIX_UPDATE      FPS * 4
+#define TIX_UPDATE_SEC  FPS * 1
+
+#define FF(x) (char*)F(x)
 
 //typedef struct led_arr { CRGB leds[NUM_LEDS] } led_arr;
 
@@ -49,17 +51,17 @@ typedef struct led_arr { CRGB leds[NUM_LEDS]; } led_arr;
 // Attach CmdMessenger
 CmdMessenger cmd = CmdMessenger(Serial);
 
-//// Flag signaling client is ready
+// Flag signaling client is ready
 bool clientReady = false;
-//
-//// Flags for animations
-//bool anim_fade = true;
-//bool anim_rainbow_border = false;
-//bool anim_tix = false;
+
+// Flags for animations
+bool anim_fade = true;
+bool anim_rainbow_border = false;
+bool anim_tix = false;
 
 //bool anim_breathe = false;
-//uint8_t anim_breathe_hue = 0;
-//uint8_t anim_breathe_frame = 0;
+uint8_t anim_breathe_hue = 0;
+uint8_t anim_breathe_frame = 0;
 
 bool anim_gx = false;
 
@@ -79,26 +81,26 @@ enum {
     CMD_BINARY_TEST             // 11
 };
 
-//const uint8_t BORDER_SIZE = 22;
-//const uint8_t border[BORDER_SIZE] = {
-//    0, 1, 2, 3, 4, 5, 6, 7,         // Top
-//    15, 23, 31,                     // Right
-//    39, 38, 37, 36, 35, 34, 33, 32, // Bottom
-//    24, 16, 8                       // Left
-//};
+const uint8_t BORDER_SIZE = 22;
+const uint8_t border[BORDER_SIZE] = {
+    0, 1, 2, 3, 4, 5, 6, 7,         // Top
+    15, 23, 31,                     // Right
+    39, 38, 37, 36, 35, 34, 33, 32, // Bottom
+    24, 16, 8                       // Left
+};
 
 // Positions for binaryClock
-//const uint8_t hourPos[HOUR_BITS]        = {0, 1, 2, 3, 4};
-//const uint8_t minutePos[MINUTE_BITS]    = {8, 9, 10, 11, 12, 13};
-//const uint8_t secondPos[SECOND_BITS]    = {16, 17, 18, 19, 20, 21};
+const uint8_t hourPos[HOUR_BITS]        = {0, 1, 2, 3, 4};
+const uint8_t minutePos[MINUTE_BITS]    = {8, 9, 10, 11, 12, 13};
+const uint8_t secondPos[SECOND_BITS]    = {16, 17, 18, 19, 20, 21};
 
 // Positions for tixClock
-//uint8_t hhPos[HH_TIX] = {1, 2, 3};
-//uint8_t hPos[H_TIX]   = {17, 18, 19, 25, 26, 27, 33, 34, 35};
-//uint8_t mmPos[MM_TIX] = {4, 5, 6, 12, 13, 14};
-//uint8_t mPos[M_TIX]   = {20, 21, 22, 28, 29, 30, 36, 37, 38};
-//uint8_t ssPos[S_TIX]  = {0, 8, 16, 24, 32};
-//uint8_t sPos[SS_TIX]  = {7, 15, 23, 31, 39};
+uint8_t hhPos[HH_TIX] = {1, 2, 3};
+uint8_t hPos[H_TIX]   = {17, 18, 19, 25, 26, 27, 33, 34, 35};
+uint8_t mmPos[MM_TIX] = {4, 5, 6, 12, 13, 14};
+uint8_t mPos[M_TIX]   = {20, 21, 22, 28, 29, 30, 36, 37, 38};
+uint8_t ssPos[S_TIX]  = {0, 8, 16, 24, 32};
+uint8_t sPos[SS_TIX]  = {7, 15, 23, 31, 39};
 uint8_t sendPos = 9;
 uint8_t receivePos = 10;
 
@@ -401,12 +403,157 @@ void setup() {
     //setTime(1357042600);
 }
 
-void fCMD_READY() {
-    Serial.println(F("CMD_READY"));
+// Handle CMD_READY
+void hCMD_READY() {
+    Serial.print(CMD_READY);
+    Serial.print(";Arduino ready;\n");
+    Serial.flush();
 }
 
-void fCMD_ACK() {
-    Serial.println(F("CMD_ACK"));
+// Send CMD_ACK
+void sCMD_ACK(char* msg) {
+    Serial.print(CMD_ACK);
+    Serial.print(";");
+    Serial.print(msg);
+    Serial.print(";\n");
+}
+
+// Send CMD_SUCCESS
+void sCMD_SUCCESS(char* msg) {
+    Serial.print(CMD_SUCCESS);
+    Serial.print(";");
+    Serial.print(msg);
+    Serial.print(";\n");
+    Serial.flush();
+}
+
+// Send CMD_ERROR
+void sCMD_ERROR(char* msg) {
+    Serial.print(CMD_ERROR);
+    Serial.print(";");
+    Serial.print(msg);
+    Serial.print(";\n");
+    Serial.flush();
+}
+
+// Handle CMD_TIME_SYNC
+void hCMD_TIME_SYNC() {
+    sCMD_TIME_SYNC_RETURN();
+}
+
+// Send CMD_TIME_SYNC_RETURN
+void sCMD_TIME_SYNC_RETURN() {
+    Serial.print(CMD_TIME_SYNC_RETURN);
+    Serial.print(";");
+    Serial.print(now());
+    Serial.print(";\n");
+    Serial.flush();
+}
+
+// Handle CMD_TIME_SYNC_RETURN
+void hCMD_TIME_SYNC_RETURN() {
+//    onGet();
+
+    unsigned long pctime = 0;
+
+    // Read bytes
+    char buffer[50];
+    Serial.readBytes(buffer, sizeof(pctime));
+
+    // Parse bytes
+    pctime = (unsigned long) buffer[0] << 24 |
+             (unsigned long) buffer[1] << 16 |
+             (unsigned long) buffer[2] << 8 |
+             (unsigned long) buffer[3];
+
+    sCMD_ACK("Time sync received");
+
+    sprintf(buffer, "Received: %lu", pctime);
+    sCMD_ACK(buffer);
+
+//    for (int i = 0; i < 4; ++i) {
+//        char buffer[4];
+//        sprintf(buffer, "%d", pctime[i]);
+//        
+//        sCMD_ACK(buffer);
+//    }
+    Serial.flush();
+//    onGet();
+//    
+//    unsigned long pctime = cmd.readBinArg<unsigned long>();
+//    
+//    cmd.sendCmd(CMD_ACK, F("Time sync received"));
+//    onSend();
+//
+//    // Integer is a valid time (greater than Jan 1 2013)
+//    if (pctime >= DEFAULT_TIME) {
+//        setTime(pctime);
+//
+//        // Get weekday and month strings
+//        /*char dayString[4],
+//           monthString[4];
+//           
+//        strcpy(dayString, dayShortStr(weekday()));
+//        strcpy(monthString, monthShortStr(month()));*/
+//
+//        // Send new formatted time (memory expensive)
+//        /*cmd.sendCmdStart(CMD_SUCCESS);
+//        cmd.sendCmdfArg("Time synced to %02d:%02d:%02d %s %d %s %d",
+//            hour(),
+//            minute(),
+//            second(),
+//            dayString,
+//            day(),
+//            monthString,
+//            year());
+//        cmd.sendCmdEnd();*/
+//
+//        cmd.sendCmd(CMD_SUCCESS, F("Time synced"));
+//        onSend();
+//        return;
+//    }
+//
+//    // Integer is not a valid time
+//    cmd.sendCmd(CMD_ERROR, F("Time is invalid, time not synced"));
+//    onSend();
+    
+//    cmd.sendCmd(CMD_ACK, F("Time sync received"));
+//    onSend();
+
+    // Integer is a valid time (greater than Jan 1 2013)
+    if (pctime >= DEFAULT_TIME) {
+        setTime(pctime);
+
+        // Get weekday and month strings
+        /*char dayString[4],
+           monthString[4];
+           
+        strcpy(dayString, dayShortStr(weekday()));
+        strcpy(monthString, monthShortStr(month()));*/
+
+        // Send new formatted time (memory expensive)
+        /*cmd.sendCmdStart(CMD_SUCCESS);
+        cmd.sendCmdfArg("Time synced to %02d:%02d:%02d %s %d %s %d",
+            hour(),
+            minute(),
+            second(),
+            dayString,
+            day(),
+            monthString,
+            year());
+        cmd.sendCmdEnd();*/
+
+//        cmd.sendCmd(CMD_SUCCESS, F("Time synced"));
+//        onSend();
+
+        sCMD_SUCCESS("Time synced");
+        return;
+    }
+
+    // Integer is not a valid time
+//    cmd.sendCmd(CMD_ERROR, F("Time is invalid, time not synced"));
+//    onSend();
+    sCMD_ERROR("Time is invalid, time not synced");
 }
 
 /**
@@ -416,7 +563,7 @@ void fCMD_ACK() {
  *      1       SIZE     0-255  Length of data
  *      2-n     DATA     0-255  Tuples of RGB bytes (R, G, B, R, G, B, etc.)
  */
-void fCMD_GX() {
+void hCMD_GX() {
 //    while (Serial.available() > 0) {
 //        uint8_t tmp = Serial.read();
 //        
@@ -494,12 +641,14 @@ void loop() {
         uint8_t in = Serial.read();
 
         switch (in) {
-            case CMD_READY: fCMD_READY(); break;
-            case CMD_ACK: fCMD_ACK(); break;
-            case CMD_GX: fCMD_GX(); break;
+            case CMD_READY: hCMD_READY(); break;
+//            case CMD_ACK: fCMD_ACK(); break;
+            case CMD_TIME_SYNC_RETURN: hCMD_TIME_SYNC_RETURN(); break;
+            case CMD_GX: hCMD_GX(); break;
                 
             default:
-                Serial.print("Unattached command;");
+                Serial.print(CMD_ERROR);
+                Serial.print(";Unattached command;\n");
                 break;
         }
         
@@ -538,7 +687,7 @@ void anim() {
     }
 
     else {
-        FastLED.delay(1000/FPS);
+//        FastLED.delay(1000/FPS);
     }
     
 //    else {
