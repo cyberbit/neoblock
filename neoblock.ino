@@ -59,7 +59,7 @@ bool anim_fade = true;
 bool anim_rainbow_border = false;
 bool anim_tix = false;
 
-//bool anim_breathe = false;
+bool anim_breathe = false;
 uint8_t anim_breathe_hue = 0;
 uint8_t anim_breathe_frame = 0;
 
@@ -395,6 +395,17 @@ void setup() {
     FastLED.addLeds<NEOPIXEL, PIN>(leds, NUM_LEDS);
     FastLED.setBrightness(BRIGHTNESS);
 
+    /*unsigned long pctime = DEFAULT_TIME;
+
+    Serial.print("Representation of ");
+    Serial.print(pctime);
+    Serial.print(" in bits (high to low): ");
+
+    for (int i = 31; i >= 0; --i) {
+        Serial.print(bitRead(pctime, i));
+        if (i == 24 || i == 16 || i == 8) Serial.print(" ");
+    }*/
+
     // Request time sync
     //cmd.sendCmd(CMD_TIME_SYNC, F("Requesting time sync"));
     //onSend();
@@ -457,7 +468,7 @@ void hCMD_TIME_SYNC_RETURN() {
     unsigned long pctime = 0;
 
     // Read bytes
-    char buffer[50];
+    unsigned char buffer[50];
     Serial.readBytes(buffer, sizeof(pctime));
 
     // Parse bytes
@@ -468,8 +479,8 @@ void hCMD_TIME_SYNC_RETURN() {
 
     sCMD_ACK("Time sync received");
 
-    sprintf(buffer, "Received: %lu", pctime);
-    sCMD_ACK(buffer);
+//    sprintf(buffer, "Received: %lu", pctime);
+//    sCMD_ACK(buffer);
 
 //    for (int i = 0; i < 4; ++i) {
 //        char buffer[4];
@@ -556,6 +567,73 @@ void hCMD_TIME_SYNC_RETURN() {
     sCMD_ERROR("Time is invalid, time not synced");
 }
 
+void hCMD_COLOR_BREATHE() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_BREATHE;"));
+    Serial.flush();
+    
+    // Read hue
+    uint8_t hue = Serial.read();
+
+    // Sync command
+    Serial.print(hue);
+    Serial.flush();
+
+    // Start animation
+    anim_breathe = true;
+    anim_breathe_hue = hue;
+
+    // Sync command
+    Serial.print(F(";END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+    
+//    onGet();
+//    
+//    uint8_t hue = cmd.readInt16Arg();
+//
+//    /*cmd.sendCmdStart(CMD_ACK);
+//    cmd.sendCmdfArg("Starting color breathe (hue %d)...", hue);
+//    cmd.sendCmdEnd();*/
+//    cmd.sendCmd(CMD_ACK, F("Starting color breathe..."));
+//    onSend();
+//
+//    // Start animation
+//    anim_breathe = true;
+//    anim_breathe_hue = hue;
+//
+//    cmd.sendCmd(CMD_SUCCESS, F("Color breathe started"));
+//    onSend();
+}
+
+void hCMD_COLOR_BREATHE_CANCEL() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_BREATHE_CANCEL;"));
+    Serial.flush();
+
+    // Start animation
+    anim_breathe = false;
+    anim_breathe_frame = 0;
+
+    // Sync command
+    Serial.print(F("END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+    
+//    onGet();
+//
+//    cmd.sendCmd(CMD_ACK);
+//    onSend();
+//
+//    anim_breathe = false;
+//    anim_breathe_frame = 0;
+//    
+//    cmd.sendCmd(CMD_SUCCESS, F("Color breathe cancelled"));
+//    onSend();
+}
+
 /**
  * CMD_GX bytes:
  *      byte    name    value   description
@@ -633,6 +711,20 @@ void hCMD_GX() {
 //    }
 }
 
+void hCMD_GX_CANCEL() {
+    // Sync command
+    Serial.print(F("CMD_GX_CANCEL;"));
+    Serial.flush();
+
+    anim_gx = false;
+
+    // Sync command
+    Serial.print(F("Graphics cancelled;END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+}
+
 void loop() {
     // Process serial data
 //    cmd.feedinSerialData();
@@ -644,7 +736,10 @@ void loop() {
             case CMD_READY: hCMD_READY(); break;
 //            case CMD_ACK: fCMD_ACK(); break;
             case CMD_TIME_SYNC_RETURN: hCMD_TIME_SYNC_RETURN(); break;
+            case CMD_COLOR_BREATHE: hCMD_COLOR_BREATHE(); break;
+            case CMD_COLOR_BREATHE_CANCEL: hCMD_COLOR_BREATHE_CANCEL(); break;
             case CMD_GX: hCMD_GX(); break;
+            case CMD_GX_CANCEL: hCMD_GX_CANCEL(); break;
                 
             default:
                 Serial.print(CMD_ERROR);
@@ -656,19 +751,19 @@ void loop() {
     }
     
     // Time not set
-//    if (timeStatus() == timeNotSet) {
-//        anim_tix = false;
-//        
-//        if (clientReady) {
-//            anim_rainbow_border = true;
-//        }
-//    }
+    if (timeStatus() == timeNotSet) {
+        anim_tix = false;
+        
+        if (clientReady) {
+            anim_rainbow_border = true;
+        }
+    }
 
     // Time is set
-//    else {
-//        anim_tix = true;
-//        anim_rainbow_border = false;
-//    }
+    else {
+        anim_tix = true;
+        anim_rainbow_border = false;
+    }
 
     anim();
     
@@ -686,59 +781,59 @@ void anim() {
          */
     }
 
-    else {
-//        FastLED.delay(1000/FPS);
-    }
-    
 //    else {
-//        if (anim_fade) {
-//            fadeToBlackBy(leds, NUM_LEDS, 50);
-//        }
-//    
-//        if (anim_rainbow_border) {
-//            rainbowBorder();
-//        }
-//    
-//        if (anim_tix) {
-//            tixClockDisplay();
-//        }
-//        
-//        if (anim_breathe) {
-//            colorBreathe();
-//        }
-//        
+//        FastLED.delay(1000/FPS);
 //    }
+    
+    else {
+        if (anim_fade) {
+            fadeToBlackBy(leds, NUM_LEDS, 50);
+        }
+    
+        if (anim_rainbow_border) {
+            rainbowBorder();
+        }
+    
+        if (anim_tix) {
+            tixClockDisplay();
+        }
+        
+        if (anim_breathe) {
+            colorBreathe();
+        }
+        
+    }
     
     FastLED.delay(1000/FPS);
     FastLED.show();
 }
 
-//void rainbowBorder() {
-//    static uint8_t hue = 0;
-//    static int pos = 0;
-//    
-//    fadeToBlackBy(leds, NUM_LEDS, 50);
-//    leds[border[pos++]] = CHSV(hue++, 200, 255);
-//    if (pos > BORDER_SIZE - 1) pos = 0;
-//    
-//    // Display and delay
-//    /*FastLED.show();
-//    FastLED.delay(1000/FPS);*/
-//}
+void rainbowBorder() {
+    static uint8_t hue = 0;
+    static int pos = 0;
+    
+    fadeToBlackBy(leds, NUM_LEDS, 50);
+    leds[border[pos++]] = CHSV(hue++, 200, 255);
+    if (pos > BORDER_SIZE - 1) pos = 0;
+    
+    // Display and delay
+    /*FastLED.show();
+    FastLED.delay(1000/FPS);*/
+}
 
-//void colorBreathe() {
-//    static uint8_t step = 2;
-//    uint8_t brightness = ease8InOutApprox(anim_breathe_frame);
-//
-//    if (anim_breathe_frame == 256 - step) step = -2;
-//    else if (anim_breathe_frame == 0) step = 2;
-//
-//    anim_breathe_frame += step;
-//
-//    for (int i = 0; i < NUM_LEDS; ++i) {
-//        leds[i] = nblend(leds[i], CHSV(anim_breathe_hue, 200, 255), brightness);
-//    }
-//}
+void colorBreathe() {
+    static uint8_t step = 2;
+    uint8_t brightness = ease8InOutApprox(anim_breathe_frame);
+
+    if (anim_breathe_frame == 256 - step) step = -2;
+    else if (anim_breathe_frame == 0) step = 2;
+
+    anim_breathe_frame += step;
+
+    for (int i = 0; i < NUM_LEDS; ++i) {
+        leds[i] = nblend(leds[i], CHSV(anim_breathe_hue, 200, 255), brightness);
+    }
+}
 
 /*void binaryClock() {
     if (Serial.available()) {
@@ -802,115 +897,115 @@ void anim() {
 //    }
 //}
 
-//void tixClockDisplay() {
-//    static int counter = TIX_UPDATE;
-//    static int secCounter = TIX_UPDATE_SEC;
-//
-//    static uint8_t timeHour, timeMinute, timeSecond,
-//        hh, h, mm, m, ss, s;
-//    
-//    // Only update time when needed
-//    if (++counter >= TIX_UPDATE) {
-//        counter = 0;
-//        timeHour = hour();
-//        timeMinute = minute();
-//    
-//        hh = timeHour / 10;
-//        h = timeHour % 10;
-//        mm = timeMinute / 10;
-//        m = timeMinute % 10;
-//    
-//        // Shuffle positions
-//        shuffle(hhPos, HH_TIX);
-//        shuffle(hPos, H_TIX);
-//        shuffle(mmPos, MM_TIX);
-//        shuffle(mPos, M_TIX);
-//    
-//        /*Serial.print("shuffled hh: ");
-//        for (int i = 0; i < HH_TIX; ++i) {
-//            Serial.print(hhPos[i]);
-//            Serial.print(" ");
-//        }
-//    
-//        Serial.print("\nshuffled h: ");
-//        for (int i = 0; i < H_TIX; ++i) {
-//            Serial.print(hPos[i]);
-//            Serial.print(" ");
-//        }
-//        Serial.println();*/
-//    }
-//
-//    // Update seconds on a different schedule
-//    if (++secCounter >= TIX_UPDATE_SEC) {
-//        secCounter = 0;
-//        timeSecond = second();
-//
-//        ss = timeSecond / 10;
-//        s = timeSecond % 10;
-//
-//        // Debug seconds
-//        /*Serial.print("s: ");
-//        Serial.print(s);
-//        Serial.print(" s % 5: ");
-//        Serial.print(s % 5);
-//        Serial.print(" n = (s % 5) - 1: ");
-//        int n = (s % 5);
-//        Serial.print(n);
-//        Serial.print(" (6 % 5) <= n through (9 % 5) <= n: ");
-//        Serial.print((6 % 5 <= n) ? '_' : 'o');
-//        Serial.print((7 % 5 <= n) ? '_' : 'o');
-//        Serial.print((8 % 5 <= n) ? '_' : 'o');
-//        Serial.print((9 % 5 <= n) ? '_' : 'o');
-//        Serial.println();*/
-//    }
-//
-//    // Update LEDs
-//    int i;
-//    for (i = 0; i < hh; ++i) {
-//        leds[hhPos[i]] = CHSV(0, 255, 255);
-//    }
-//
-//    for (i = 0; i < h; ++i) {
-//        leds[hPos[i]] = CHSV(160, 255, 255);
-//    }
-//
-//    for (i = 0; i < mm; ++i) {
-//        leds[mmPos[i]] = CHSV(96, 255, 255);
-//    }
-//
-//    for (i = 0; i < m; ++i) {
-//        leds[mPos[i]] = CHSV(64, 255, 255);
-//    }
-//
-//    for (i = 0; i < ss; ++i) {
-//        leds[ssPos[i]] = CHSV(255, 0, 255);
-//    }
-//
-//    for (i = 0; i < s; ++i) {
-//        /**
-//         * Pattern map for S (o is on, _ is off)
-//         * 
-//         * Though unintentional, this map is very
-//         * similar to how Morse code represents
-//         * digits.
-//         * 
-//         * 0: _ _ _ _ _    _
-//         * 1: o _ _ _ _     \
-//         * 2: o o _ _ _      \
-//         * 3: o o o _ _       > 1-5 are iterated in order
-//         * 4: o o o o _      /
-//         * 5: o o o o o    _/
-//         * 6: _ o o o o     \
-//         * 7: _ _ o o o      \ 6-9 can be calculated as the map
-//         * 8: _ _ _ o o      / for 5 with S % 5 off, in order
-//         * 9: _ _ _ _ o    _/
-//         */
-//
-//         if (s > 5 && (i % 5) <= (s % 5) - 1) continue;
-//         
-//         leds[sPos[i]] = CHSV(255, 0, 255);
-//    }
-//}
+void tixClockDisplay() {
+    static int counter = TIX_UPDATE;
+    static int secCounter = TIX_UPDATE_SEC;
+
+    static uint8_t timeHour, timeMinute, timeSecond,
+        hh, h, mm, m, ss, s;
+    
+    // Only update time when needed
+    if (++counter >= TIX_UPDATE) {
+        counter = 0;
+        timeHour = hour();
+        timeMinute = minute();
+    
+        hh = timeHour / 10;
+        h = timeHour % 10;
+        mm = timeMinute / 10;
+        m = timeMinute % 10;
+    
+        // Shuffle positions
+        shuffle(hhPos, HH_TIX);
+        shuffle(hPos, H_TIX);
+        shuffle(mmPos, MM_TIX);
+        shuffle(mPos, M_TIX);
+    
+        /*Serial.print("shuffled hh: ");
+        for (int i = 0; i < HH_TIX; ++i) {
+            Serial.print(hhPos[i]);
+            Serial.print(" ");
+        }
+    
+        Serial.print("\nshuffled h: ");
+        for (int i = 0; i < H_TIX; ++i) {
+            Serial.print(hPos[i]);
+            Serial.print(" ");
+        }
+        Serial.println();*/
+    }
+
+    // Update seconds on a different schedule
+    if (++secCounter >= TIX_UPDATE_SEC) {
+        secCounter = 0;
+        timeSecond = second();
+
+        ss = timeSecond / 10;
+        s = timeSecond % 10;
+
+        // Debug seconds
+        /*Serial.print("s: ");
+        Serial.print(s);
+        Serial.print(" s % 5: ");
+        Serial.print(s % 5);
+        Serial.print(" n = (s % 5) - 1: ");
+        int n = (s % 5);
+        Serial.print(n);
+        Serial.print(" (6 % 5) <= n through (9 % 5) <= n: ");
+        Serial.print((6 % 5 <= n) ? '_' : 'o');
+        Serial.print((7 % 5 <= n) ? '_' : 'o');
+        Serial.print((8 % 5 <= n) ? '_' : 'o');
+        Serial.print((9 % 5 <= n) ? '_' : 'o');
+        Serial.println();*/
+    }
+
+    // Update LEDs
+    int i;
+    for (i = 0; i < hh; ++i) {
+        leds[hhPos[i]] = CHSV(0, 255, 255);
+    }
+
+    for (i = 0; i < h; ++i) {
+        leds[hPos[i]] = CHSV(160, 255, 255);
+    }
+
+    for (i = 0; i < mm; ++i) {
+        leds[mmPos[i]] = CHSV(96, 255, 255);
+    }
+
+    for (i = 0; i < m; ++i) {
+        leds[mPos[i]] = CHSV(64, 255, 255);
+    }
+
+    for (i = 0; i < ss; ++i) {
+        leds[ssPos[i]] = CHSV(255, 0, 255);
+    }
+
+    for (i = 0; i < s; ++i) {
+        /**
+         * Pattern map for S (o is on, _ is off)
+         * 
+         * Though unintentional, this map is very
+         * similar to how Morse code represents
+         * digits.
+         * 
+         * 0: _ _ _ _ _    _
+         * 1: o _ _ _ _     \
+         * 2: o o _ _ _      \
+         * 3: o o o _ _       > 1-5 are iterated in order
+         * 4: o o o o _      /
+         * 5: o o o o o    _/
+         * 6: _ o o o o     \
+         * 7: _ _ o o o      \ 6-9 can be calculated as the map
+         * 8: _ _ _ o o      / for 5 with S % 5 off, in order
+         * 9: _ _ _ _ o    _/
+         */
+
+         if (s > 5 && (i % 5) <= (s % 5) - 1) continue;
+         
+         leds[sPos[i]] = CHSV(255, 0, 255);
+    }
+}
 
 /*void processSyncMessage() {
     unsigned long pctime;
@@ -925,6 +1020,6 @@ void anim() {
 }*/
 
 // Preform Fisher-Yates shuffle of array
-//void shuffle(int8_t *o, int i) {
-//    for (int j, x; i; j = random8(i), x = o[--i], o[i] = o[j], o[j] = x) {}
-//}
+void shuffle(int8_t *o, int i) {
+    for (int j, x; i; j = random8(i), x = o[--i], o[i] = o[j], o[j] = x) {}
+}

@@ -13,6 +13,9 @@ ENCRYPTION_PASSWORD = os.environ.get('PUSHBULLET_ENCRYPTION_PASSWORD')
 # print("environment:")
 # print(os.environ)
 
+# Set FPS
+FPS = 12
+
 s = sched.scheduler(time.time, time.sleep)
 
 class App(Tk):
@@ -165,7 +168,7 @@ class App(Tk):
         # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
         
         print(self.readCmd()) # CMD_ACK
-        print(self.readCmd()) # CMD_ACK (debug)
+        # print(self.readCmd()) # CMD_ACK (debug)
         # print(self.readCmd()) # CMD_ACK (debug)
         # print(self.readCmd()) # CMD_ACK (debug)
         # print(self.readCmd()) # CMD_ACK (debug)
@@ -178,16 +181,43 @@ class App(Tk):
         print(self.cmd.receive()) # CMD_SUCCESS
     
     def cmd_color_breathe(self, v):
-        print(" * CMD_COLOR_BREATHE: Sending color breathe...")
-        self.cmd.send("CMD_COLOR_BREATHE", v)
-        print(self.cmd.receive()) # CMD_ACK
-        print(self.cmd.receive()) # CMD_SUCCESS
+        print(" * CMD_COLOR_BREATHE: Starting color breathe...")
+        
+        # Send command
+        self.arduino.write(array.array('B', [
+            # Command header
+            7,
+            
+            # Hue
+            v
+        ]).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
     
     def cmd_color_breathe_cancel(self):
         print(" * CMD_COLOR_BREATHE_CANCEL: Cancelling color breathe...")
-        self.cmd.send("CMD_COLOR_BREATHE_CANCEL")
-        print(self.cmd.receive()) # CMD_ACK
-        print(self.cmd.receive()) # CMD_SUCCESS
+        
+        # Send command
+        self.arduino.write(array.array('B', [
+            # Command header
+            8
+        ]).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
     
     def cmd_binary_test(self):
         print(" * CMD_BINARY_TEST: Sending binary arguments...")
@@ -352,18 +382,33 @@ class App(Tk):
             # Output lines
             # print(*result, sep='\n')
             
-            # Sleep a little (reduces FPS to ~10)
-            time.sleep(0.03)
+            # Sleep a little for FPS limiting
+            time.sleep(1/FPS)
+        
+        # Flush input buffer
+        self.arduino.comm.flushInput()
         
         totalTime = time.time() - start
         
-        print("Esimated FPS: ", frames / totalTime)
+        print("Desired FPS: ", FPS, " Actual FPS: ", frames / totalTime)
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
-        self.cmd.send("CMD_GX_CANCEL");
-        print(self.cmd.receive()) # CMD_ACK
-        print(self.cmd.receive()) # CMD_SUCCESS
+        
+        # Send command
+        self.arduino.write(array.array('B', [
+            # Command header
+            10
+        ]).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
     
     def startSchedule(self):
         print(" * Time sync scheduled");
