@@ -2,7 +2,7 @@
 # Python program using the library to interface with the arduino sketch above.
 # ------------------------------------------------------------------------------
 
-import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random, csv
+import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random, csv, numpy as np
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
 from websocket import create_connection
@@ -10,11 +10,28 @@ from websocket import create_connection
 # Grab Pushbullet API key from environment
 API_KEY = os.environ.get('PUSHBULLET_API_KEY')
 ENCRYPTION_PASSWORD = os.environ.get('PUSHBULLET_ENCRYPTION_PASSWORD')
+ARDUINO_PORT = os.environ.get('ARDUINO_PORT')
 # print("environment:")
 # print(os.environ)
 
+# List of command names These must be in the same order as in the sketch.
+commands = [
+    "CMD_READY",
+    "CMD_ACK",
+    "CMD_SUCCESS",
+    "CMD_ERROR",
+    "CMD_TIME_SYNC",
+    "CMD_TIME_SYNC_RETURN",
+    "CMD_SET_BRIGHTNESS",
+    "CMD_COLOR_BREATHE",
+    "CMD_COLOR_BREATHE_CANCEL",
+    "CMD_GX",
+    "CMD_GX_CANCEL",
+    "CMD_BINARY_TEST"
+]
+
 # Set FPS
-FPS = 12
+FPS = 15
 
 s = sched.scheduler(time.time, time.sleep)
 
@@ -87,6 +104,9 @@ class App(Tk):
         self.binary_arg_test = Button(frame, text="Test binary argument", command=self.cmd_binary_test)
         self.binary_arg_test.grid(row=5, column=1, sticky=W+E)
         
+        self.gx_text_test = Button(frame, text="Test experimental marquee", command=self.cmd_text_test)
+        self.gx_text_test.grid(row=5, column=2, sticky=W+E)
+        
         # self.gx_test = Button(frame, text="Test graphics", command=self.cmd_gx_test)
         # self.gx_test.grid(row=5, column=2, sticky=W+E)
         
@@ -154,7 +174,7 @@ class App(Tk):
         
         self.arduino.write(array.array('B', [
             # Command header
-            5
+            commands.index("CMD_TIME_SYNC_RETURN")
         ] + timestamp).tostring())
         
         # Wait for everything to write
@@ -180,16 +200,16 @@ class App(Tk):
         print(self.cmd.receive()) # CMD_ACK
         print(self.cmd.receive()) # CMD_SUCCESS
     
-    def cmd_color_breathe(self, v):
+    def cmd_color_breathe(self, hue):
         print(" * CMD_COLOR_BREATHE: Starting color breathe...")
         
         # Send command
         self.arduino.write(array.array('B', [
             # Command header
-            7,
+            commands.index("CMD_COLOR_BREATHE"),
             
             # Hue
-            v
+            hue
         ]).tostring())
         
         # Wait for everything to write
@@ -207,7 +227,7 @@ class App(Tk):
         # Send command
         self.arduino.write(array.array('B', [
             # Command header
-            8
+            commands.index("CMD_COLOR_BREATHE_CANCEL")
         ]).tostring())
         
         # Wait for everything to write
@@ -358,13 +378,58 @@ class App(Tk):
             #   0       CMD_GX
             #   1       length
             #   2-n     data bytes
-            self.arduino.write(array.array('B', [
-                # Command header
-                9,
-                
-                # Data length
-                num_leds
-            ] + leds).tostring())
+            self.sendCmd("CMD_GX", [num_leds] + leds)
+            
+            # Wait for everything to write
+            # self.arduino.comm.flush()
+            
+            # Data bytes
+            # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+            # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+            # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+            # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+            # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+            
+            # Read command
+            # result = self.readCmd()
+            
+            # Output lines
+            # print(*result, sep='\n')
+            
+            # Sleep a little for FPS limiting
+            time.sleep(1/FPS)
+        
+        # Flush input buffer
+        self.arduino.comm.flushInput()
+        
+        totalTime = time.time() - start
+        
+        print("Desired FPS: ", FPS, " Actual FPS: ", frames / totalTime)
+    
+    def cmd_text_test(self):
+        print("Testing experimental text graphics...")
+        
+        nt = NeoText(["pad8", *"BAD FACE", "pad8"], fg=51, bg=1)
+        testText = nt.marquee
+        
+        num_leds = 40
+        width = 8
+        
+        # Number of frames
+        frames = testText.shape[1] - (width - 1)
+        
+        start = time.time()
+        for i in range(0, frames):
+            # Read next frame of graphic
+            leds = testText[:,i:i+width].flatten().tolist()
+            
+            # Send command
+            # 
+            # Byte format:
+            #   0       CMD_GX
+            #   1       length
+            #   2-n     data bytes
+            self.sendCmd("CMD_GX", [num_leds] + leds)
             
             # Wait for everything to write
             # self.arduino.comm.flush()
@@ -396,10 +461,7 @@ class App(Tk):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
         
         # Send command
-        self.arduino.write(array.array('B', [
-            # Command header
-            10
-        ]).tostring())
+        self.sendCmd("CMD_GX_CANCEL");
         
         # Wait for everything to write
         self.arduino.comm.flush()
@@ -430,6 +492,12 @@ class App(Tk):
             # self.scheduleSync()
             self.after(1*60*60*1000, lambda: self.scheduleSync(sc))
             # self.after(3000, lambda: self.scheduleSync(sc))
+    
+    def sendCmd(self, cmd, arr=None):
+        if arr is None:
+            arr = []
+        
+        self.arduino.write(array.array('B', [commands.index(cmd)] + arr).tostring())
     
     def readCmd(self):
         # Read as many bytes as possible
@@ -557,29 +625,101 @@ class App(Tk):
         decrypted = decrypted.decode()
         
         return(decrypted)
+
+class NeoText():
+    symbols = {
+        "letsp": np.array([
+            [0],
+            [0],
+            [0],
+            [0],
+            [0],
+        ]),
+        "pad8": np.array([
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+        ]),
+        " ": np.array([
+            [0, 0],
+            [0, 0],
+            [0, 0],
+            [0, 0],
+            [0, 0],
+        ]),
+        "A": np.array([
+            [0, 1, 0],
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "B": np.array([
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 0],
+        ]),
+        "C": np.array([
+            [0, 1, 1],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [0, 1, 1],
+        ]),
+        "D": np.array([
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 0],
+        ]),
+        "E": np.array([
+            [0, 1, 1],
+            [1, 0, 0],
+            [1, 1, 0],
+            [1, 0, 0],
+            [0, 1, 1],
+        ]),
+        "F": np.array([
+            [1, 1, 1],
+            [1, 0, 0],
+            [1, 1, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+        ])
+    }
+    
+    def __init__(self, *text, fg=255, bg=0):
+        self.text = text
+        self.marquee = np.hstack([*map(self.char, *text)])
         
+        # Set colors
+        for x in np.nditer(self.marquee, op_flags=['readwrite']):
+            # Background mask
+            if (x == 0): x[...] = bg
+            
+            # Foreground mask
+            elif (x == 1): x[...] = fg
+    
+    def char(self, sym):
+        value = NeoText.symbols.get(sym)
+        
+        # Add letter spacing
+        if (sym != "pad8"):
+            value = np.hstack((value, NeoText.symbols.get("letsp")))
+        
+        return value
 
 print(" * Connecting to Arduino...")
 
 # Initialize an ArduinoBoard instance.  This is where you specify baud rate and
 # serial timeout.  If you are using a non ATmega328 board, you might also need
 # to set the data sizes (bytes for integers, longs, floats, and doubles).  
-arduino = PyCmdMessenger.ArduinoBoard("COM5",baud_rate=9600)
-
-# List of command names (and formats for their associated arguments). These must
-# be in the same order as in the sketch.
-commands = [["CMD_READY", "s"],
-            ["CMD_ACK", "s"],
-            ["CMD_SUCCESS", "s"],
-            ["CMD_ERROR", "s"],
-            ["CMD_TIME_SYNC", "s"],
-            ["CMD_TIME_SYNC_RETURN", "L"],
-            ["CMD_SET_BRIGHTNESS", "s"],
-            ["CMD_COLOR_BREATHE", "s"],
-            ["CMD_COLOR_BREATHE_CANCEL", "s"],
-            ["CMD_GX", "i"],                    # The parameter for CMD_GX is the number of bytes following (r, g, b)
-            ["CMD_GX_CANCEL", ""],
-            ["CMD_BINARY_TEST", "b*"]]
+arduino = PyCmdMessenger.ArduinoBoard(ARDUINO_PORT,baud_rate=9600)
 
 # Initialize the messenger
 # cmd = PyCmdMessenger.CmdMessenger(arduino,commands)

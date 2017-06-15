@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <style>
+            #colors td {
+                width: 2em;
+                height: 2em;
+                padding: .3em;
+                text-align: center;
+                vertical-align: center;
+            }
+        </style>
+        <h1>256 8-bit colors</h1>
+        <p>
+            Colors are specified in 8 bits as RRRGGGBB.
+        </p>
+        <table id="colors"></table>
+        <script
+            src="https://code.jquery.com/jquery-1.12.4.min.js"
+            integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ="
+            crossorigin="anonymous"></script>
+        <script>
+            var colors = {
+                red: {
+                    bits: 3,
+                    values: []
+                },
+                green: {
+                    bits: 3,
+                    values: []
+                },
+                blue: {
+                    bits: 2,
+                    values: []
+                }
+            };
+            
+            // Generate colors
+            $.each(colors, function(k, v) {
+                // Calculate gap between colors
+                colors[k].step = 1 << 8 - v.bits;
+                
+                for (var i = 0; i < 1 << v.bits; ++i) {
+                    colors[k].values.push(i * colors[k].step);
+                }
+            });
+            
+            console.log("colors:", colors);
+            
+            // Display colors in table. Iterating backwards (BGR)
+            $.each(colors.blue.values, function(kb, b) {
+                $.each(colors.green.values, function(kg, g) {
+                    var $tr;
+                    
+                    // Reuse rows once halfway through blue
+                    if (b >= 128) {
+                        $tr = $("#g" + g + "b" + (b - 128));
+                    } else {
+                        $tr = $("<tr>").attr("id", "g" + g + "b" + b);
+                        $("#colors").append($tr);
+                    }
+                    
+                    $.each(colors.red.values, function(kr, r) {
+                        var rgb = "rgb(" + r + "," + g + "," + b + ")";
+                        var byte = r / colors.red.step << 5
+                                 | g / colors.green.step << 2
+                                 | b / colors.blue.step;
+                        
+                        $tr.append($("<td>").text(byte).css("background", rgb));
+                    });
+                });
+            });
+        </script>
+    </body>
+</html>
