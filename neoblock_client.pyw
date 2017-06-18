@@ -2,7 +2,11 @@
 # Python program using the library to interface with the arduino sketch above.
 # ------------------------------------------------------------------------------
 
-import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random, csv, numpy as np
+# Fix for Unicode characters
+import win_unicode_console
+win_unicode_console.enable()
+
+import PyCmdMessenger, time, sched, os, threading, json, cryptography, array, serial, random, csv, numpy as np, re, copy
 from pushbullet.pushbullet import PushBullet
 from tkinter import *
 from websocket import create_connection
@@ -31,7 +35,7 @@ commands = [
 ]
 
 # Set FPS
-FPS = 15
+FPS = 12
 
 s = sched.scheduler(time.time, time.sleep)
 
@@ -55,6 +59,13 @@ class App(Tk):
             "default": 0,
             "com.snapchat.android": 64,
             "com.pushbullet.android": 96
+        }
+        
+        # 256 color schemes for apps
+        self.app256Schemes = {
+            "default": {"fg": 255, "bg": 0},
+            "com.snapchat.android": {"fg": 252, "bg": 108},
+            "com.pushbullet.android": {"fg": 28, "bg": 8}
         }
         
         self.quit = Button(
@@ -196,9 +207,17 @@ class App(Tk):
     
     def cmd_set_brightness(self, v):
         print(" * CMD_SET_BRIGHTNESS: Sending brightness value...")
-        self.cmd.send("CMD_SET_BRIGHTNESS", v)
-        print(self.cmd.receive()) # CMD_ACK
-        print(self.cmd.receive()) # CMD_SUCCESS
+        
+        # Send command
+        self.sendCmd("CMD_SET_BRIGHTNESS", [v])
+        
+        # Receive response
+        print(self.readCmd())
+        
+        # print(" * CMD_SET_BRIGHTNESS: Sending brightness value...")
+        # self.cmd.send("CMD_SET_BRIGHTNESS", v)
+        # print(self.cmd.receive()) # CMD_ACK
+        # print(self.cmd.receive()) # CMD_SUCCESS
     
     def cmd_color_breathe(self, hue):
         print(" * CMD_COLOR_BREATHE: Starting color breathe...")
@@ -409,8 +428,19 @@ class App(Tk):
     def cmd_text_test(self):
         print("Testing experimental text graphics...")
         
-        nt = NeoText(["pad8", *"BAD FACE", "pad8"], fg=51, bg=1)
+        # nt = NeoText(["*pad8", *("Angie Beeson (5)".upper()), "*pad8"], fg=255, bg=0)
+        pad8 = NeoText(["*pad8"])
+        red = NeoText([*"RED"], fg=224, bg=96)
+        orange = NeoText([*"ORANGE"], fg=240, bg=104)
+        yellow = NeoText([*"YELLOW"], fg=252, bg=108)
+        green = NeoText([*"GREEN"], fg=28, bg=12)
+        blue = NeoText([*"BLUE"], fg=3, bg=1)
+        indigo = NeoText([*"INDIGO"], fg=75, bg=1)
+        violet = NeoText([*"VIOLET"], fg=99, bg=34)
+        
+        nt = pad8 + red + orange + yellow + green + blue + indigo + violet + pad8
         testText = nt.marquee
+        # testText = NeoText(["*pad8", *("my career as a Walmart greeter was cut short when the manager noticed me singing \"Welcome to the Jungle\" to every customer").upper(), "*pad8"]).marquee
         
         num_leds = 40
         width = 8
@@ -456,6 +486,39 @@ class App(Tk):
         totalTime = time.time() - start
         
         print("Desired FPS: ", FPS, " Actual FPS: ", frames / totalTime)
+    
+    def cmd_text(self, msg, options):
+        print(" * Displaying marquee...")
+        
+        nt = NeoText(["*pad8", *msg.upper(), "*pad8"], **options).marquee
+        
+        num_leds = 40
+        width = 8
+        
+        # Number of frames
+        frames = nt.shape[1] - (width - 1)
+        
+        start = time.time()
+        for i in range(0, frames):
+            # Read next frame of graphic
+            leds = nt[:,i:i+width].flatten().tolist()
+            
+            # Send command
+            # 
+            # Byte format:
+            #   0       CMD_GX
+            #   1       length
+            #   2-n     data bytes
+            self.sendCmd("CMD_GX", [num_leds] + leds)
+            
+            # Sleep a little for FPS limiting
+            time.sleep(1/FPS)
+        
+        # Flush input buffer
+        self.arduino.comm.flushInput()
+        
+        # Cancel graphics
+        self.cmd_gx_cancel()
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
@@ -532,7 +595,7 @@ class App(Tk):
         return msg_lines
     
     def pushbulletWatchdog(self):
-        pb = PushBullet(API_KEY, {'https': os.environ['http_proxy']})
+        pb = PushBullet(API_KEY, {'https': os.environ.get('http_proxy')})
         
         # Grab user
         self.user = pb.getUser()
@@ -581,6 +644,9 @@ class App(Tk):
                 
                 # Send color breathe
                 self.cmd_color_breathe(self.appToHue(self.push['package_name']))
+                
+                # Send text marquee
+                self.cmd_text(push['title'], self.appTo256Scheme(self.push['package_name']))
             
             elif push['type'] == "dismissal":
                 print(" $ Dismissed notification!")
@@ -595,6 +661,12 @@ class App(Tk):
             return self.appHues[package_name]
         else:
             return self.appHues['default']
+    
+    def appTo256Scheme(self, package_name):
+        if package_name in self.app256Schemes:
+            return self.app256Schemes[package_name]
+        else:
+            return self.app256Schemes['default']
     
     def decryptData(self, data):
         assert self.encryption_key
@@ -628,14 +700,14 @@ class App(Tk):
 
 class NeoText():
     symbols = {
-        "letsp": np.array([
+        "*letsp": np.array([
             [0],
             [0],
             [0],
             [0],
             [0],
         ]),
-        "pad8": np.array([
+        "*pad8": np.array([
             [0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0],
@@ -690,7 +762,224 @@ class NeoText():
             [1, 1, 0],
             [1, 0, 0],
             [1, 0, 0],
-        ])
+        ]),
+        "G": np.array([
+            [0, 1, 1],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 1],
+            [1, 1, 1],
+        ]),
+        "H": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "I": np.array([
+            [1, 1, 1],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [1, 1, 1],
+        ]),
+        "J": np.array([
+            [1, 1, 1],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [1, 1, 0],
+        ]),
+        "K": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "L": np.array([
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 1, 1],
+        ]),
+        "M": np.array([
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "N": np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "O": np.array([
+            [0, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [0, 1, 0],
+        ]),
+        "P": np.array([
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 1, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+        ]),
+        "Q": np.array([
+            [0, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [0, 1, 1],
+        ]),
+        "R": np.array([
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "S": np.array([
+            [0, 1, 1],
+            [1, 0, 0],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 0],
+        ]),
+        "T": np.array([
+            [1, 1, 1],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+        ]),
+        "U": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+        ]),
+        "V": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [0, 1, 0],
+        ]),
+        "W": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+        ]),
+        "X": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [0, 1, 0],
+            [1, 0, 1],
+            [1, 0, 1],
+        ]),
+        "Y": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 1, 0],
+            [0, 1, 0],
+        ]),
+        "Z": np.array([
+            [1, 1, 1],
+            [0, 0, 1],
+            [0, 1, 0],
+            [1, 0, 0],
+            [1, 1, 1],
+        ]),
+        "0": np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+        ]),
+        "1": np.array([
+            [1, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [1, 1, 1],
+        ]),
+        "2": np.array([
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+            [1, 0, 0],
+            [1, 1, 1],
+        ]),
+        "3": np.array([
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+        ]),
+        "4": np.array([
+            [1, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+        ]),
+        "5": np.array([
+            [1, 1, 1],
+            [1, 0, 0],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+        ]),
+        "6": np.array([
+            [1, 1, 1],
+            [1, 0, 0],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+        ]),
+        "7": np.array([
+            [1, 1, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+        ]),
+        "8": np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+        ]),
+        "9": np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+        ]),
+        "?": np.array([
+            [1, 1, 1],
+            [0, 0, 1],
+            [0, 1, 0],
+            [0, 0, 0],
+            [0, 1, 0],
+        ]),
     }
     
     def __init__(self, *text, fg=255, bg=0):
@@ -705,12 +994,20 @@ class NeoText():
             # Foreground mask
             elif (x == 1): x[...] = fg
     
+    def __add__(self, other):
+        newText = copy.copy(self)
+        newText.text = self.text + other.text
+        newText.marquee = np.hstack((self.marquee, other.marquee))
+        return newText
+    
     def char(self, sym):
+        # Replace unknown symbols with "?"
         value = NeoText.symbols.get(sym)
+        if (value is None): value = NeoText.symbols.get("?")
         
-        # Add letter spacing
-        if (sym != "pad8"):
-            value = np.hstack((value, NeoText.symbols.get("letsp")))
+        # Add letter spacing to non-special symbols
+        if (not re.match(r'^\*.*', sym)):
+            value = np.hstack((value, NeoText.symbols.get("*letsp")))
         
         return value
 

@@ -634,6 +634,47 @@ void hCMD_COLOR_BREATHE_CANCEL() {
 //    onSend();
 }
 
+void hCMD_SET_BRIGHTNESS() {
+    // Sync command
+    Serial.print(F("CMD_SET_BRIGHTNESS;"));
+    Serial.flush();
+    
+    // Read brightness
+    uint8_t brightness = Serial.read();
+
+    // Sync command
+    Serial.print(brightness);
+    Serial.flush();
+
+    // Set brightness
+    FastLED.setBrightness(brightness);
+
+    // Sync command
+    Serial.print(F(";END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+//    onGet();
+//    
+//    uint8_t brightness = cmd.readInt16Arg();
+//    uint8_t brightnessConstraint = constrain(brightness, 0, 255);
+//    
+//    /*cmd.sendCmdStart(CMD_ACK);
+//    cmd.sendCmdfArg("Setting brightness to %d (constrained to %d)...", brightness, brightnessConstraint);
+//    cmd.sendCmdEnd();*/
+//    cmd.sendCmd(CMD_ACK, F("Setting brightness..."));
+//    onSend();
+//    
+//    // Set brightness
+//    FastLED.setBrightness(brightness);
+//    
+//    /*cmd.sendCmdStart(CMD_SUCCESS);
+//    cmd.sendCmdfArg("Brightness set to %d", brightnessConstraint);
+//    cmd.sendCmdEnd();*/
+//    cmd.sendCmd(CMD_SUCCESS, F("Brightness set"));
+//    onSend();
+}
+
 /**
  * CMD_GX bytes:
  *      byte    name    value   description
@@ -736,6 +777,7 @@ void loop() {
             case CMD_READY: hCMD_READY(); break;
 //            case CMD_ACK: fCMD_ACK(); break;
             case CMD_TIME_SYNC_RETURN: hCMD_TIME_SYNC_RETURN(); break;
+            case CMD_SET_BRIGHTNESS: hCMD_SET_BRIGHTNESS(); break;
             case CMD_COLOR_BREATHE: hCMD_COLOR_BREATHE(); break;
             case CMD_COLOR_BREATHE_CANCEL: hCMD_COLOR_BREATHE_CANCEL(); break;
             case CMD_GX: hCMD_GX(); break;
@@ -1020,6 +1062,6 @@ void tixClockDisplay() {
 }*/
 
 // Preform Fisher-Yates shuffle of array
-void shuffle(int8_t *o, int i) {
+void shuffle(uint8_t *o, int i) {
     for (int j, x; i; j = random8(i), x = o[--i], o[i] = o[j], o[j] = x) {}
 }
