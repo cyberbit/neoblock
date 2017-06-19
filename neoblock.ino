@@ -429,6 +429,26 @@ void sCMD_ACK(char* msg) {
     Serial.print(";\n");
 }
 
+// Handle CMD_ACK
+void hCMD_ACK() {
+//    char buffer[50] = "";
+//    char msg[100] = "";
+//    int pos = 0;
+//
+//    // Read string
+//    while (Serial.available() > 0 && pos < 50) {
+//        buffer[pos++] = Serial.read();
+//    }
+//
+//    // Send response
+//    strcat(msg, "I received: ");
+//    strcat(msg, buffer);
+//    sCMD_ACK(msg);
+//    Serial.flush();
+    sCMD_ACK("Command acknowledged");
+    Serial.flush();
+}
+
 // Send CMD_SUCCESS
 void sCMD_SUCCESS(char* msg) {
     Serial.print(CMD_SUCCESS);
@@ -775,7 +795,7 @@ void loop() {
 
         switch (in) {
             case CMD_READY: hCMD_READY(); break;
-//            case CMD_ACK: fCMD_ACK(); break;
+            case CMD_ACK: hCMD_ACK(); break;
             case CMD_TIME_SYNC_RETURN: hCMD_TIME_SYNC_RETURN(); break;
             case CMD_SET_BRIGHTNESS: hCMD_SET_BRIGHTNESS(); break;
             case CMD_COLOR_BREATHE: hCMD_COLOR_BREATHE(); break;
