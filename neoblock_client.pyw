@@ -147,7 +147,10 @@ class App(Tk):
         # time.sleep(2)
         
         # Auto-schedule
-        # self.startSchedule()
+        self.startSchedule()
+        
+        # Start PushBullet watchdog
+        self.pushbulletWatchdog()
     
     def cmd_ready(self):
         print(" * CMD_READY: Client ready")
@@ -608,7 +611,7 @@ class App(Tk):
     
     def scheduleSync(self, sc):
         if self.doSync:
-            self.cmd_time_sync() # Get current time for comparison
+            # self.cmd_time_sync() # Get current time for comparison
             self.cmd_time_sync_return()
             # s.enter(1*60*60, 1, self.scheduleSync, (sc,))
             # time.sleep(1*60*60)
@@ -655,10 +658,13 @@ class App(Tk):
         return msg_lines
     
     def pushbulletWatchdog(self):
+        print(" * Connecting to PushBullet...")
         pb = PushBullet(API_KEY, {'https': os.environ.get('http_proxy')})
         
         # Grab user
         self.user = pb.getUser()
+        
+        print(" * Processing encryption keys...")
         
         # Set up encryption key
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -674,6 +680,8 @@ class App(Tk):
         )
         
         self.encryption_key = kdf.derive(ENCRYPTION_PASSWORD.encode("UTF-8"))
+        
+        print(" * Starting watchdog...")
         
         # Initialize thread
         watchdog = threading.Thread(target=lambda: pb.realtime(self.handlePush))
