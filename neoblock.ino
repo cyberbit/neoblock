@@ -63,6 +63,12 @@ bool anim_breathe = false;
 uint8_t anim_breathe_hue = 0;
 uint8_t anim_breathe_frame = 0;
 
+bool anim_ripple = true;
+uint8_t anim_ripple_hue = 0;
+uint8_t anim_ripple1_frame = 64;
+uint8_t anim_ripple2_frame = 32;
+uint8_t anim_ripple3_frame = 0;
+
 bool anim_gx = false;
 
 // Known commands
@@ -88,6 +94,19 @@ const uint8_t border[BORDER_SIZE] = {
     39, 38, 37, 36, 35, 34, 33, 32, // Bottom
     24, 16, 8                       // Left
 };
+
+const uint8_t ripple1[4] = {
+    18, 19, 20, 21
+};
+
+const uint8_t ripple2[14] = {
+    9, 10, 11, 12, 13, 14,          // Top
+    22,                             // Right
+    30, 29, 28, 27, 26, 25,         // Bottom
+    17                              // Left
+};
+
+const uint8_t *ripple3 = border;
 
 // Positions for binaryClock
 const uint8_t hourPos[HOUR_BITS]        = {0, 1, 2, 3, 4};
@@ -863,7 +882,10 @@ void anim() {
         if (anim_breathe) {
             colorBreathe();
         }
-        
+
+        if (anim_ripple) {
+            colorRipple();
+        }
     }
     
     FastLED.delay(1000/FPS);
@@ -884,7 +906,7 @@ void rainbowBorder() {
 }
 
 void colorBreathe() {
-    static uint8_t step = 2;
+    static int8_t step = 2;
     uint8_t brightness = ease8InOutApprox(anim_breathe_frame);
 
     if (anim_breathe_frame == 256 - step) step = -2;
@@ -894,6 +916,39 @@ void colorBreathe() {
 
     for (int i = 0; i < NUM_LEDS; ++i) {
         leds[i] = nblend(leds[i], CHSV(anim_breathe_hue, 200, 255), brightness);
+    }
+}
+
+void colorRipple() {
+    static int8_t step1 = 4;
+    static int8_t step2 = 4;
+    static int8_t step3 = 4;
+    uint8_t brightness1 = ease8InOutApprox(anim_ripple1_frame);
+    uint8_t brightness2 = ease8InOutApprox(anim_ripple2_frame);
+    uint8_t brightness3 = ease8InOutApprox(anim_ripple3_frame);
+
+    if (anim_ripple1_frame == 256 - step1) step1 = -4;
+    else if (anim_ripple1_frame == 0) step1 = 4;
+    anim_ripple1_frame += step1;
+    
+    if (anim_ripple2_frame == 256 - step2) step2 = -4;
+    else if (anim_ripple2_frame == 0) step2 = 4;
+    anim_ripple2_frame += step2;
+    
+    if (anim_ripple3_frame == 256 - step3) step3 = -4;
+    else if (anim_ripple3_frame == 0) step3 = 4;
+    anim_ripple3_frame += step3;
+
+    for (int i = 0; i < 4; ++i) {
+        leds[ripple1[i]] = nblend(leds[ripple1[i]], CHSV(anim_ripple_hue, 200, 255), brightness1);
+    }
+    
+    for (int i = 0; i < 14; ++i) {
+        leds[ripple2[i]] = nblend(leds[ripple2[i]], CHSV(anim_ripple_hue, 200, 255), brightness2);
+    }
+    
+    for (int i = 0; i < 22; ++i) {
+        leds[ripple3[i]] = nblend(leds[ripple3[i]], CHSV(anim_ripple_hue, 200, 255), brightness3);
     }
 }
 
