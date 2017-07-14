@@ -54,6 +54,9 @@ class App(Tk):
         # Initial sync schedule is off
         self.doSync = False
         
+        # Graphics thread ID
+        self.gxThread = "stop"
+        
         # Hues for apps
         self.appHues = {
             "default": 0,
@@ -148,12 +151,22 @@ class App(Tk):
     
     def cmd_ready(self):
         print(" * CMD_READY: Client ready")
+        
         self.sendCmd("CMD_READY")
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
         print(self.readCmd()) # CMD_READY
     
     def cmd_ack(self):
         print(" * CMD_ACK: Command acknowledged")
+        
         self.sendCmd("CMD_ACK", list(b'Command acknowledged'))
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
         print(self.readCmd()) # CMD_ACK
         # self.cmd.send("CMD_ACK", "Command acknowledged")
         # print(self.cmd.receive())
@@ -332,8 +345,8 @@ class App(Tk):
     def cmd_gx_ex(self):
         print(" * Testing experimental CMD_GX...")
         
-        def _thread():
-            print(" * * cmd_gx_ex: Thread started.")
+        def _thread(tid):
+            print(" * * cmd_gx_ex: Thread", tid, "started.")
             num_leds = 40
             
             # Wave of colors to try
@@ -368,78 +381,86 @@ class App(Tk):
             
             start = time.time()
             for i in range(0, frames):
-                # Bytes use 8-bit color format:
-                # 
-                #       Bit     7  6  5  4  3  2  1  0
-                #       Data    R  R  R  G  G  G  B  B
-                #
-                # This allows the following values:
-                #
-                #       Red     0-7     << 5
-                #       Green   0-7     << 2
-                #       Blue    0-3     << 0
-                #
-                # Bitwise AND them together to get the 8-bit color.
-                
-                # Make array of num_leds 8-bit color pixels
-                # leds = [0] * num_leds
-                
-                # Make array of num_leds random 8-bit color pixels
-                # leds = random.sample(range(0, 255), num_leds)
-                
-                # Set single pixel to some fancy color idk
-                # pixel = wave[i % 8]
-                # leds[i] = (pixel[0] << 5) | (pixel[1] << 2) | pixel[2];
-                # print(leds[i])
-                
-                # Read next frame of graphic
-                leds = graphic[i]
-                
-                # Send command
-                # 
-                # Byte format:
-                #   0       CMD_GX
-                #   1       length
-                #   2-n     data bytes
-                self.sendCmd("CMD_GX", [num_leds] + leds)
-                
-                # Wait for everything to write
-                # self.arduino.comm.flush()
-                
-                # Data bytes
-                # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
-                # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
-                # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
-                # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
-                # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
-                
-                # Read command
-                # result = self.readCmd()
-                
-                # Output lines
-                # print(*result, sep='\n')
-                
-                # Sleep a little for FPS limiting
-                time.sleep(1/FPS)
+                # print("tid: ", tid, " gxThread: ", gxThread)
+                # Run thread until priority is removed
+                if (tid == self.gxThread):
+                    # Bytes use 8-bit color format:
+                    # 
+                    #       Bit     7  6  5  4  3  2  1  0
+                    #       Data    R  R  R  G  G  G  B  B
+                    #
+                    # This allows the following values:
+                    #
+                    #       Red     0-7     << 5
+                    #       Green   0-7     << 2
+                    #       Blue    0-3     << 0
+                    #
+                    # Bitwise AND them together to get the 8-bit color.
+                    
+                    # Make array of num_leds 8-bit color pixels
+                    # leds = [0] * num_leds
+                    
+                    # Make array of num_leds random 8-bit color pixels
+                    # leds = random.sample(range(0, 255), num_leds)
+                    
+                    # Set single pixel to some fancy color idk
+                    # pixel = wave[i % 8]
+                    # leds[i] = (pixel[0] << 5) | (pixel[1] << 2) | pixel[2];
+                    # print(leds[i])
+                    
+                    # Read next frame of graphic
+                    leds = graphic[i]
+                    
+                    # Send command
+                    # 
+                    # Byte format:
+                    #   0       CMD_GX
+                    #   1       length
+                    #   2-n     data bytes
+                    self.sendCmd("CMD_GX", [num_leds] + leds)
+                    
+                    # Wait for everything to write
+                    # self.arduino.comm.flush()
+                    
+                    # Data bytes
+                    # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+                    # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+                    # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+                    # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+                    # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+                    
+                    # Read command
+                    # result = self.readCmd()
+                    
+                    # Output lines
+                    # print(*result, sep='\n')
+                    
+                    # Sleep a little for FPS limiting
+                    time.sleep(1/FPS)
             
             # Flush input buffer
             self.arduino.comm.flushInput()
             
             totalTime = time.time() - start
             
-            print(" * * cmd_gx_ex: Desired FPS: ", FPS, " Actual FPS: ", frames / totalTime)
+            print(" * * cmd_gx_ex: Thread", tid, "stopped. Desired FPS:", FPS, "Actual FPS:", frames / totalTime)
+        
+        # Generate thread ID
+        # Can't use built-in thread ID as thread is started before ID can be saved
+        tid = "%04x" % random.randrange(0x0, 0xffff)
+        self.gxThread = tid
         
         # Initialize thread
         print(" * Starting cmd_gx_ex thread...")
-        watchdog = threading.Thread(target=_thread)
+        watchdog = threading.Thread(target=lambda: _thread(tid))
         watchdog.daemon = True
         watchdog.start()
     
     def cmd_text_test(self):
         print("Testing experimental text graphics...")
         
-        def _thread():
-            print(" * * cmd_text_test: Thread started.")
+        def _thread(tid):
+            print(" * * cmd_text_test: Thread", tid, "started.")
             # nt = NeoText(["*pad8", *("Angie Beeson (5)".upper()), "*pad8"], fg=255, bg=0)
             pad8 = NeoText(["*pad8"])
             red = NeoText([*"RED"], fg=224, bg=96)
@@ -449,6 +470,12 @@ class App(Tk):
             blue = NeoText([*"BLUE"], fg=3, bg=1)
             indigo = NeoText([*"INDIGO"], fg=75, bg=1)
             violet = NeoText([*"VIOLET"], fg=99, bg=34)
+            
+            # Random colored string
+            # stringy = [*"RANDOM COLORS ARE FUN", "*pad8"]
+            # nt = NeoText(["*pad8"])
+            # for letter in stringy:
+            #     nt += NeoText([letter], fg=random.randint(0, 255), bg=random.randint(0, 255))
             
             nt = pad8 + red + orange + yellow + green + blue + indigo + violet + pad8
             testText = nt.marquee
@@ -462,50 +489,61 @@ class App(Tk):
             
             start = time.time()
             for i in range(0, frames):
-                # Read next frame of graphic
-                leds = testText[:,i:i+width].flatten().tolist()
-                
-                # Send command
-                # 
-                # Byte format:
-                #   0       CMD_GX
-                #   1       length
-                #   2-n     data bytes
-                self.sendCmd("CMD_GX", [num_leds] + leds)
-                
-                # Wait for everything to write
-                # self.arduino.comm.flush()
-                
-                # Data bytes
-                # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
-                # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
-                # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
-                # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
-                # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
-                
-                # Read command
-                # result = self.readCmd()
-                
-                # Output lines
-                # print(*result, sep='\n')
-                
-                # Sleep a little for FPS limiting
-                time.sleep(1/FPS)
+                # print("tid: ", tid, " self.gxThread: ", self.gxThread)
+                if (tid == self.gxThread):
+                    # Read next frame of graphic
+                    leds = testText[:,i:i+width].flatten().tolist()
+                    
+                    # Send command
+                    # 
+                    # Byte format:
+                    #   0       CMD_GX
+                    #   1       length
+                    #   2-n     data bytes
+                    self.sendCmd("CMD_GX", [num_leds] + leds)
+                    
+                    # Wait for everything to write
+                    # self.arduino.comm.flush()
+                    
+                    # Data bytes
+                    # 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255,
+                    # 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0,
+                    # 0,0,255, 255,0,255, 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0,
+                    # 0,255,255, 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255,
+                    # 255,255,255, 0,0,0, 255,0,0, 0,255,0, 255,255,0, 0,0,255, 255,0,255, 0,255,255,
+                    
+                    # Read command
+                    # result = self.readCmd()
+                    
+                    # Output lines
+                    # print(*result, sep='\n')
+                    
+                    # Sleep a little for FPS limiting
+                    time.sleep(1/FPS)
             
             # Flush input buffer
             self.arduino.comm.flushInput()
             
             totalTime = time.time() - start
             
-            print(" * * cmd_text_test: Desired FPS: ", FPS, " Actual FPS: ", frames / totalTime)
+            print(" * * cmd_text_test: Thread", tid, "stopped. Desired FPS:", FPS, "Actual FPS:", frames / totalTime)
+        
+        # Generate thread ID
+        # Can't use built-in thread ID as thread is started before ID can be saved
+        tid = "%04x" % random.randrange(0x0, 0xffff)
+        self.gxThread = tid
         
         # Initialize thread
         print(" * Starting cmd_test_text thread...")
-        watchdog = threading.Thread(target=_thread)
+        watchdog = threading.Thread(target=lambda: _thread(tid))
         watchdog.daemon = True
         watchdog.start()
     
     def cmd_text(self, msg, options):
+        # Generate thread id
+        tid = "%04x" % random.randrange(0x0, 0xffff)
+        self.gxThread = tid
+        
         print(" * Displaying marquee...")
         
         nt = NeoText(["*pad8", *msg.upper(), "*pad8"], **options).marquee
@@ -518,19 +556,20 @@ class App(Tk):
         
         start = time.time()
         for i in range(0, frames):
-            # Read next frame of graphic
-            leds = nt[:,i:i+width].flatten().tolist()
-            
-            # Send command
-            # 
-            # Byte format:
-            #   0       CMD_GX
-            #   1       length
-            #   2-n     data bytes
-            self.sendCmd("CMD_GX", [num_leds] + leds)
-            
-            # Sleep a little for FPS limiting
-            time.sleep(1/FPS)
+            if (tid == self.gxThread):
+                # Read next frame of graphic
+                leds = nt[:,i:i+width].flatten().tolist()
+                
+                # Send command
+                # 
+                # Byte format:
+                #   0       CMD_GX
+                #   1       length
+                #   2-n     data bytes
+                self.sendCmd("CMD_GX", [num_leds] + leds)
+                
+                # Sleep a little for FPS limiting
+                time.sleep(1/FPS)
         
         # Flush input buffer
         self.arduino.comm.flushInput()
@@ -540,6 +579,9 @@ class App(Tk):
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
+        
+        # Close graphics thread
+        self.gxThread = "stop"
         
         # Send command
         self.sendCmd("CMD_GX_CANCEL");
