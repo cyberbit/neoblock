@@ -63,11 +63,17 @@ bool anim_breathe = false;
 uint8_t anim_breathe_hue = 0;
 uint8_t anim_breathe_frame = 0;
 
-bool anim_ripple = true;
+bool anim_ripple = false;
 uint8_t anim_ripple_hue = 0;
 uint8_t anim_ripple1_frame = 64;
 uint8_t anim_ripple2_frame = 32;
 uint8_t anim_ripple3_frame = 0;
+
+bool anim_wipe = true;
+bool anim_wipeOn = true;
+int8_t anim_wipeOn_column = 7;
+bool anim_wipeOff = false;
+int8_t anim_wipeOff_column = 7;
 
 bool anim_gx = false;
 
@@ -886,6 +892,53 @@ void anim() {
         if (anim_ripple) {
             colorRipple();
         }
+
+        if (anim_wipe) {
+            static int wait = 0;
+
+            /**
+             * Wipe process:
+             * 
+             *  - Call wipeOn(). This will wipe on a certain background color.
+             *    Once the animation cycle has completed, further calls to
+             *    wipeOn will keep the background color.
+             *  - Call wipeOff(). This will flag wipeOn to stop holding the background.
+             *    Once the animation cycle has completed, further calls to wipeOff will
+             *    not affect the leds in any way.
+             */
+
+             // Call wipeOn, wait for animation to complete
+             if (anim_wipeOn && wipeOn()) {
+                // Whatever
+             }
+
+             // wipeOn has finished
+             else {
+                wait++;
+
+                if (wait >= 60) {
+                    anim_wipeOn = false;
+                    anim_wipeOff = true;
+                    
+                    if (anim_wipeOff && wipeOff()) {
+                        // Whatever
+                    }
+
+                    else {
+                        wait++;
+
+                        if (wait >= 400) {
+                            wait = 0;
+                            
+                            anim_wipeOn = true;
+                            anim_wipeOff = false;
+
+                            anim_wipeOn_column = anim_wipeOff_column = 7;
+                        }
+                    }
+                }
+             }
+        }
     }
     
     FastLED.delay(1000/FPS);
@@ -949,6 +1002,67 @@ void colorRipple() {
     
     for (int i = 0; i < 22; ++i) {
         leds[ripple3[i]] = nblend(leds[ripple3[i]], CHSV(anim_ripple_hue, 200, 255), brightness3);
+    }
+}
+
+bool wipeOn() {
+    static int8_t frameSkip = 2;
+    static int8_t frame = 0;
+
+    uint32_t background = CRGB::Red;
+
+    // Make all pixels after column marker black
+    for (int i = anim_wipeOn_column; i < 8; ++i) {
+        for (int j = i; j < NUM_LEDS; j += 8) {
+            // Column is white, pixels after are black
+            leds[j] = (i == anim_wipeOn_column ? CRGB::White : background);
+        }
+    }
+
+    if (++frame == frameSkip) {
+        Serial.print("Wiping on... c ");
+        Serial.print(anim_wipeOn_column);
+        Serial.print(", f ");
+        Serial.println(frame);
+        frame = 0;
+
+        // Keep animating until first column is reached
+        if (anim_wipeOn_column >= 0) --anim_wipeOn_column;
+
+        // Hold background color until wipeOff is called
+        else {
+            fill_solid(leds, NUM_LEDS, background);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool wipeOff() {
+    static int8_t frameSkip = 2;
+    static int8_t frame = 0;
+
+    // Cancel wipeOn background hold
+//    anim_wipeOn = false;
+
+    // Make all pixels after column marker black
+    for (int i = anim_wipeOff_column; i >= 0; --i) {
+        for (int j = i; j < NUM_LEDS; j += 8) {
+            // Column is white, pixels after are black
+            leds[j] = (i == anim_wipeOff_column ? CRGB::White : CRGB::Red);
+        }
+    }
+
+    if (++frame == frameSkip) {
+        Serial.print("Wiping off... c ");
+        Serial.print(anim_wipeOff_column);
+        Serial.print(", f ");
+        Serial.println(frame);
+        frame = 0;
+
+        // Keep animating until first column is reached
+        if (anim_wipeOff_column >= 0) --anim_wipeOff_column;
     }
 }
 
