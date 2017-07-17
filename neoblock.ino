@@ -65,8 +65,8 @@ uint8_t anim_breathe_frame = 0;
 
 bool anim_ripple = true;
 uint8_t anim_ripple_hue = 0;
-uint8_t anim_ripple1_frame = 64;
-uint8_t anim_ripple2_frame = 32;
+uint8_t anim_ripple1_frame = 32;
+uint8_t anim_ripple2_frame = 16;
 uint8_t anim_ripple3_frame = 0;
 
 bool anim_gx = false;
@@ -920,23 +920,25 @@ void colorBreathe() {
 }
 
 void colorRipple() {
-    static int8_t step1 = 4;
-    static int8_t step2 = 4;
-    static int8_t step3 = 4;
-    uint8_t brightness1 = ease8InOutApprox(anim_ripple1_frame);
-    uint8_t brightness2 = ease8InOutApprox(anim_ripple2_frame);
-    uint8_t brightness3 = ease8InOutApprox(anim_ripple3_frame);
+    static uint8_t hueFrame = 0;
+    static uint8_t hueStep = 4;
+    static int8_t step1 = 1;
+    static int8_t step2 = 1;
+    static int8_t step3 = 1;
+    uint8_t brightness1 = ease8Ripple(anim_ripple1_frame);
+    uint8_t brightness2 = ease8Ripple(anim_ripple2_frame);
+    uint8_t brightness3 = ease8Ripple(anim_ripple3_frame);
 
-    if (anim_ripple1_frame == 256 - step1) step1 = -4;
-    else if (anim_ripple1_frame == 0) step1 = 4;
+    /*if (anim_ripple1_frame == 256 - step1) step1 = -4;
+    else if (anim_ripple1_frame == 0) step1 = 4;*/
     anim_ripple1_frame += step1;
     
-    if (anim_ripple2_frame == 256 - step2) step2 = -4;
-    else if (anim_ripple2_frame == 0) step2 = 4;
+    /*if (anim_ripple2_frame == 256 - step2) step2 = -4;
+    else if (anim_ripple2_frame == 0) step2 = 4;*/
     anim_ripple2_frame += step2;
     
-    if (anim_ripple3_frame == 256 - step3) step3 = -4;
-    else if (anim_ripple3_frame == 0) step3 = 4;
+    /*if (anim_ripple3_frame == 256 - step3) step3 = -4;
+    else if (anim_ripple3_frame == 0) step3 = 4;*/
     anim_ripple3_frame += step3;
 
     for (int i = 0; i < 4; ++i) {
@@ -950,6 +952,49 @@ void colorRipple() {
     for (int i = 0; i < 22; ++i) {
         leds[ripple3[i]] = nblend(leds[ripple3[i]], CHSV(anim_ripple_hue, 200, 255), brightness3);
     }
+
+    // Iterate ripple hue
+    hueFrame++;
+    if (hueFrame == hueStep) {
+        ++anim_ripple_hue;
+        hueFrame = 0;
+    }
+}
+
+fract8 ease8Ripple(fract8 i)
+{
+    /**
+     * Model for ripple:
+     * 
+     * i        behavior
+     *   0-64  ease8InOutApprox(i * 2)
+     * 128-255  0
+     */
+
+    if (i < 32) {
+        i = ease8InOutApprox(i * 8);
+    } else if (i < 64) {
+        i -= 32;
+        i = ease8InOutApprox(255 - (i * 8));
+    } else {
+        i = 0;
+    }
+    /*if( i < 64) {
+        // start with slope 0.5
+        i /= 2;
+    } else if( i > (255 - 64)) {
+        // end with slope 0.5
+        i = 255 - i;
+        i /= 2;
+        i = 255 - i;
+    } else {
+        // in the middle, use slope 192/128 = 1.5
+        i -= 64;
+        i += (i / 2);
+        i += 32;
+    }*/
+
+    return i;
 }
 
 /*void binaryClock() {

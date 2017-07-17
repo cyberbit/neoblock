@@ -659,7 +659,12 @@ class App(Tk):
     
     def pushbulletWatchdog(self):
         print(" * Connecting to PushBullet...")
-        pb = PushBullet(API_KEY, {'https': os.environ.get('http_proxy')})
+        
+        try:
+            pb = PushBullet(API_KEY, {'https': os.environ.get('http_proxy')})
+        except TypeError:
+            print(" * Proxy connect failed. Attempting connection without proxy...")
+            pb = PushBullet(API_KEY)
         
         # Grab user
         self.user = pb.getUser()
