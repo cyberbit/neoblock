@@ -31,10 +31,12 @@ commands = [
     "CMD_COLOR_BREATHE_CANCEL",
     "CMD_GX",
     "CMD_GX_CANCEL",
-    "CMD_BINARY_TEST"
+    "CMD_BINARY_TEST",
+    "CMD_WIPE_ON",
+    "CMD_WIPE_OFF"
 ]
 
-# Set FPS
+# Set FPS for graphics
 FPS = 12
 
 s = sched.scheduler(time.time, time.sleep)
@@ -141,6 +143,12 @@ class App(Tk):
         
         self.color_breathe_blue = Button(frame, text="Color breathe (blue)", command=lambda: self.cmd_color_breathe(160))
         self.color_breathe_blue.grid(row=6, column=3, sticky=W+E)
+        
+        self.wipe_on = Button(frame, text="Wipe on", command=lambda: self.cmd_wipe_on())
+        self.wipe_on.grid(row=2, column=0, sticky=W+E)
+        
+        self.wipe_off = Button(frame, text="Cancel GX + wipe off", command=lambda: self.cmd_wipe_off())
+        self.wipe_off.grid(row=3, column=0, sticky=W+E)
         
         # Ready signal (plus dramatic pause)
         # self.cmd_ready()
@@ -466,13 +474,13 @@ class App(Tk):
             print(" * * cmd_text_test: Thread", tid, "started.")
             # nt = NeoText(["*pad8", *("Angie Beeson (5)".upper()), "*pad8"], fg=255, bg=0)
             pad8 = NeoText(["*pad8"])
-            red = NeoText([*"RED"], fg=224, bg=96)
+            red = NeoText(["*pad8", *"RED"], fg=224, bg=96)
             orange = NeoText([*"ORANGE"], fg=240, bg=104)
             yellow = NeoText([*"YELLOW"], fg=252, bg=108)
             green = NeoText([*"GREEN"], fg=28, bg=12)
             blue = NeoText([*"BLUE"], fg=3, bg=1)
             indigo = NeoText([*"INDIGO"], fg=75, bg=1)
-            violet = NeoText([*"VIOLET"], fg=99, bg=34)
+            violet = NeoText([*"VIOLET", "*pad8"], fg=99, bg=34)
             
             # Random colored string
             # stringy = [*"RANDOM COLORS ARE FUN", "*pad8"]
@@ -480,12 +488,15 @@ class App(Tk):
             # for letter in stringy:
             #     nt += NeoText([letter], fg=random.randint(0, 255), bg=random.randint(0, 255))
             
-            nt = pad8 + red + orange + yellow + green + blue + indigo + violet + pad8
+            nt = red + orange + yellow + green + blue + indigo + violet
             testText = nt.marquee
             # testText = NeoText(["*pad8", *("my career as a Walmart greeter was cut short when the manager noticed me singing \"Welcome to the Jungle\" to every customer").upper(), "*pad8"]).marquee
             
             num_leds = 40
             width = 8
+            
+            # Wipe on
+            self.cmd_wipe_on(bg=96)
             
             # Number of frames
             frames = testText.shape[1] - (width - 1)
@@ -528,6 +539,9 @@ class App(Tk):
             self.arduino.comm.flushInput()
             
             totalTime = time.time() - start
+            
+            # Wipe off
+            self.cmd_wipe_off(bg=34)
             
             print(" * * cmd_text_test: Thread", tid, "stopped. Desired FPS:", FPS, "Actual FPS:", frames / totalTime)
         
@@ -588,6 +602,46 @@ class App(Tk):
         
         # Send command
         self.sendCmd("CMD_GX_CANCEL");
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_wipe_on(self, fg=255, bg=224):
+        print(" * CMD_WIPE_ON: Wiping on...")
+        
+        # Send command
+        #
+        # Byte format:
+        #   0       CMD_WIPE_ON
+        #   ?       foreground color (256) (not implemented)
+        #   1       background color (256)
+        self.sendCmd("CMD_WIPE_ON", [bg]);
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_wipe_off(self, fg=255, bg=224):
+        print(" * CMD_WIPE_OFF: Wiping off...")
+        
+        # Send command
+        #
+        # Byte format:
+        #   0       CMD_WIPE_ON
+        #   ?       foreground color (256) (not implemented)
+        #   1       background color (256)
+        self.sendCmd("CMD_WIPE_OFF", [bg]);
         
         # Wait for everything to write
         self.arduino.comm.flush()

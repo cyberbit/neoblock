@@ -9,10 +9,22 @@
                 text-align: center;
                 vertical-align: center;
             }
+            
+            [red] {
+                color: red;
+            }
+            
+            [green] {
+                color: green;
+            }
+            
+            [blue] {
+                color: blue;
+            }
         </style>
         <h1>256 8-bit colors</h1>
         <p>
-            Colors are specified in 8 bits as RRRGGGBB.
+            Colors are specified in 8 bits as <code><span red>RRR</span><span green>G GG</span><span blue>BB</span></code>.
         </p>
         <table id="colors"></table>
         <script
@@ -66,7 +78,10 @@
                                  | g / colors.green.step << 2
                                  | b / colors.blue.step;
                         
-                        $tr.append($("<td>").text(byte).css("background", rgb));
+                        $tr.append($("<td>").text(byte).css({
+                            background: rgb,
+                            color: (r+g > 128) || (r+g+b > 512) ? "black" : "white"
+                        }));
                     });
                 });
             });

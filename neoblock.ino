@@ -69,8 +69,10 @@ uint8_t anim_ripple1_frame = 32;
 uint8_t anim_ripple2_frame = 16;
 uint8_t anim_ripple3_frame = 0;
 
-bool anim_wipe = true;
-bool anim_wipeOn = true;
+bool anim_wipe = false;
+uint32_t anim_wipe_fg = CRGB::White;
+uint32_t anim_wipe_bg = CRGB::Red;
+bool anim_wipeOn = false;
 int8_t anim_wipeOn_column = 7;
 bool anim_wipeOff = false;
 int8_t anim_wipeOff_column = 7;
@@ -90,7 +92,9 @@ enum {
     CMD_COLOR_BREATHE_CANCEL,   // 8
     CMD_GX,                     // 9
     CMD_GX_CANCEL,              // 10
-    CMD_BINARY_TEST             // 11
+    CMD_BINARY_TEST,            // 11
+    CMD_WIPE_ON,                // 12
+    CMD_WIPE_OFF                // 13
 };
 
 const uint8_t BORDER_SIZE = 22;
@@ -811,6 +815,62 @@ void hCMD_GX_CANCEL() {
     Serial.flush();
 }
 
+void hCMD_WIPE_ON() {
+    // Sync command
+    Serial.print(F("CMD_WIPE_ON;"));
+    Serial.flush();
+    
+    // Read background
+    uint8_t bg = Serial.read();
+    
+    uint32_t red = bg & B11100000;
+    uint32_t green = bg & B11100;
+    uint32_t blue = bg & B11;
+
+    // Create 24 bit color value
+    anim_wipe_bg = (red << 16) | ((green << 3) << 8) | (blue << 6);
+
+    // Sync command
+    Serial.print(anim_wipe_bg);
+    Serial.flush();
+
+    // Set control flags
+    anim_wipe = true;
+    anim_wipeOn = true;
+    anim_wipeOff = false;
+
+    // Set wipe column
+    anim_wipeOn_column = 7;
+}
+
+void hCMD_WIPE_OFF() {
+    // Sync command
+    Serial.print(F("CMD_WIPE_OFF;"));
+    Serial.flush();
+    
+    // Read background
+    uint8_t bg = Serial.read();
+    
+    uint32_t red = bg & B11100000;
+    uint32_t green = bg & B11100;
+    uint32_t blue = bg & B11;
+
+    // Create 24 bit color value
+    anim_wipe_bg = (red << 16) | ((green << 3) << 8) | (blue << 6);
+
+    // Sync command
+    Serial.print(anim_wipe_bg);
+    Serial.flush();
+
+    // Set control flags
+    anim_wipe = true;
+    anim_wipeOn = false;
+    anim_wipeOff = true;
+
+    // Set wipe column
+    anim_wipeOff_column = 7;
+}
+
 void loop() {
     // Process serial data
 //    cmd.feedinSerialData();
@@ -827,6 +887,10 @@ void loop() {
             case CMD_COLOR_BREATHE_CANCEL: hCMD_COLOR_BREATHE_CANCEL(); break;
             case CMD_GX: hCMD_GX(); break;
             case CMD_GX_CANCEL: hCMD_GX_CANCEL(); break;
+            case CMD_WIPE_ON: hCMD_WIPE_ON(); break;
+            case CMD_WIPE_OFF: hCMD_WIPE_OFF(); break;
+            case '0': hCMD_WIPE_ON(); break;
+            case '1': hCMD_WIPE_OFF(); break;
                 
             default:
                 Serial.print(CMD_ERROR);
@@ -894,6 +958,14 @@ void anim() {
         }
 
         if (anim_wipe) {
+            if (anim_wipeOn) {
+                wipeOn();
+            } else if (anim_wipeOff) {
+                wipeOff();
+            }
+        }
+
+        /*if (anim_wipe) {
             static int wait = 0;
 
             /**
@@ -905,7 +977,7 @@ void anim() {
              *  - Call wipeOff(). This will flag wipeOn to stop holding the background.
              *    Once the animation cycle has completed, further calls to wipeOff will
              *    not affect the leds in any way.
-             */
+             *
 
              // Call wipeOn, wait for animation to complete
              if (anim_wipeOn && wipeOn()) {
@@ -937,8 +1009,8 @@ void anim() {
                         }
                     }
                 }
-             }
-        }
+            }
+        }*/
     }
     
     FastLED.delay(1000/FPS);
@@ -1054,29 +1126,37 @@ bool wipeOn() {
     static int8_t frameSkip = 2;
     static int8_t frame = 0;
 
-    uint32_t background = CRGB::Red;
-
     // Make all pixels after column marker black
     for (int i = anim_wipeOn_column; i < 8; ++i) {
         for (int j = i; j < NUM_LEDS; j += 8) {
             // Column is white, pixels after are black
-            leds[j] = (i == anim_wipeOn_column ? CRGB::White : background);
+            leds[j] = (i == anim_wipeOn_column ? anim_wipe_fg : anim_wipe_bg);
         }
     }
 
     if (++frame == frameSkip) {
-        Serial.print("Wiping on... c ");
+        /*Serial.print("Wiping on... c ");
         Serial.print(anim_wipeOn_column);
         Serial.print(", f ");
-        Serial.println(frame);
+        Serial.println(frame);*/
         frame = 0;
 
         // Keep animating until first column is reached
-        if (anim_wipeOn_column >= 0) --anim_wipeOn_column;
+        if (anim_wipeOn_column >= 0) {
+            --anim_wipeOn_column;
+        }
 
         // Hold background color until wipeOff is called
         else {
-            fill_solid(leds, NUM_LEDS, background);
+            fill_solid(leds, NUM_LEDS, anim_wipe_bg);
+
+            // Very last iteration, finish CMD_WIPE_ON
+            if (anim_wipeOn_column == -1) {
+                --anim_wipeOn_column;
+                Serial.print(F("Done;END;\n"));
+                Serial.flush();
+            }
+            
             return true;
         }
     }
@@ -1091,23 +1171,34 @@ bool wipeOff() {
     // Cancel wipeOn background hold
 //    anim_wipeOn = false;
 
+    // Cancel graphics (faster than running another command to do it)
+    anim_gx = false;
+
     // Make all pixels after column marker black
     for (int i = anim_wipeOff_column; i >= 0; --i) {
         for (int j = i; j < NUM_LEDS; j += 8) {
             // Column is white, pixels after are black
-            leds[j] = (i == anim_wipeOff_column ? CRGB::White : CRGB::Red);
+            leds[j] = (i == anim_wipeOff_column ? anim_wipe_fg : anim_wipe_bg);
         }
     }
 
     if (++frame == frameSkip) {
-        Serial.print("Wiping off... c ");
+        /*Serial.print("Wiping off... c ");
         Serial.print(anim_wipeOff_column);
         Serial.print(", f ");
-        Serial.println(frame);
+        Serial.println(frame);*/
         frame = 0;
 
         // Keep animating until first column is reached
-        if (anim_wipeOff_column >= 0) --anim_wipeOff_column;
+        if (anim_wipeOff_column >= 0) {
+            --anim_wipeOff_column;
+
+            // Very last iteration, finish CMD_WIPE_OFF
+            if (anim_wipeOff_column < 0) {
+                Serial.print(F("Done;END;\n"));
+                Serial.flush();
+            }
+        }
     }
 }
 
