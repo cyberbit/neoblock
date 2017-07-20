@@ -63,11 +63,11 @@ bool anim_breathe = false;
 uint8_t anim_breathe_hue = 0;
 uint8_t anim_breathe_frame = 0;
 
+bool anim_gx = false;
+
 bool anim_ripple = false;
 uint8_t anim_ripple_hue = 0;
-uint8_t anim_ripple1_frame = 32;
-uint8_t anim_ripple2_frame = 16;
-uint8_t anim_ripple3_frame = 0;
+uint8_t anim_ripple_frame = 0;
 
 bool anim_wipe = false;
 uint32_t anim_wipe_fg = CRGB::White;
@@ -76,7 +76,10 @@ bool anim_wipeOn = false;
 bool anim_wipeOff = false;
 int8_t anim_wipe_column = 7;
 
-bool anim_gx = false;
+bool anim_hold = false;
+uint8_t anim_hold_hue = 0;
+
+bool anim_mood = true;
 
 // Known commands
 enum {
@@ -93,7 +96,11 @@ enum {
     CMD_GX_CANCEL,              // 10
     CMD_BINARY_TEST,            // 11
     CMD_WIPE_ON,                // 12
-    CMD_WIPE_OFF                // 13
+    CMD_WIPE_OFF,               // 13
+    CMD_COLOR_HOLD,             // 14
+    CMD_COLOR_HOLD_CANCEL,      // 15
+    CMD_COLOR_RIPPLE,           // 16
+    CMD_COLOR_RIPPLE_CANCEL     // 17
 };
 
 const uint8_t BORDER_SIZE = 22;
@@ -871,6 +878,75 @@ void hCMD_WIPE_OFF() {
     anim_wipe_column = 7;
 }
 
+void hCMD_COLOR_HOLD() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_HOLD;"));
+    Serial.flush();
+    
+    // Read hue
+    uint8_t hue = Serial.read();
+
+    // Sync command
+    Serial.print(hue);
+    Serial.flush();
+
+    // Start animation
+    anim_hold = true;
+    anim_hold_hue = hue;
+
+    // Sync command
+    Serial.print(F(";END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+}
+
+void hCMD_COLOR_HOLD_CANCEL() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_HOLD_CANCEL;"));
+    Serial.flush();
+
+    // Start animation
+    anim_hold = false;
+
+    // Sync command
+    Serial.print(F("END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+}
+
+void hCMD_COLOR_RIPPLE() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_RIPPLE;"));
+    Serial.flush();
+
+    // Start animation
+    anim_ripple = true;
+
+    // Sync command
+    Serial.print(F(";END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+}
+
+void hCMD_COLOR_RIPPLE_CANCEL() {
+    // Sync command
+    Serial.print(F("CMD_COLOR_RIPPLE_CANCEL;"));
+    Serial.flush();
+
+    // Start animation
+    anim_ripple = false;
+    anim_ripple_frame = 0;
+
+    // Sync command
+    Serial.print(F("END;\n"));
+
+    // Wait for output to finish
+    Serial.flush();
+}
+
 void loop() {
     // Process serial data
 //    cmd.feedinSerialData();
@@ -889,8 +965,10 @@ void loop() {
             case CMD_GX_CANCEL: hCMD_GX_CANCEL(); break;
             case CMD_WIPE_ON: hCMD_WIPE_ON(); break;
             case CMD_WIPE_OFF: hCMD_WIPE_OFF(); break;
-            case '0': hCMD_WIPE_ON(); break;
-            case '1': hCMD_WIPE_OFF(); break;
+            case CMD_COLOR_HOLD: hCMD_COLOR_HOLD(); break;
+            case CMD_COLOR_HOLD_CANCEL: hCMD_COLOR_HOLD_CANCEL(); break;
+            case CMD_COLOR_RIPPLE: hCMD_COLOR_RIPPLE(); break;
+            case CMD_COLOR_RIPPLE_CANCEL: hCMD_COLOR_RIPPLE_CANCEL(); break;
                 
             default:
                 Serial.print(CMD_ERROR);
@@ -944,6 +1022,10 @@ void anim() {
         if (anim_rainbow_border) {
             rainbowBorder();
         }
+
+        if (anim_mood) {
+            moodLight();
+        }
     
         if (anim_tix) {
             tixClockDisplay();
@@ -951,6 +1033,10 @@ void anim() {
         
         if (anim_breathe) {
             colorBreathe();
+        }
+
+        if (anim_hold) {
+            colorHold();
         }
 
         if (anim_ripple) {
@@ -1047,24 +1133,13 @@ void colorBreathe() {
 void colorRipple() {
     static uint8_t hueFrame = 0;
     static uint8_t hueStep = 4;
-    static int8_t step1 = 1;
-    static int8_t step2 = 1;
-    static int8_t step3 = 1;
-    uint8_t brightness1 = ease8Ripple(anim_ripple1_frame);
-    uint8_t brightness2 = ease8Ripple(anim_ripple2_frame);
-    uint8_t brightness3 = ease8Ripple(anim_ripple3_frame);
+    static int8_t step = 1;
+    
+    uint8_t brightness1 = ease8Ripple(anim_ripple_frame);
+    uint8_t brightness2 = ease8Ripple(anim_ripple_frame - 16);
+    uint8_t brightness3 = ease8Ripple(anim_ripple_frame - 32);
 
-    /*if (anim_ripple1_frame == 256 - step1) step1 = -4;
-    else if (anim_ripple1_frame == 0) step1 = 4;*/
-    anim_ripple1_frame += step1;
-    
-    /*if (anim_ripple2_frame == 256 - step2) step2 = -4;
-    else if (anim_ripple2_frame == 0) step2 = 4;*/
-    anim_ripple2_frame += step2;
-    
-    /*if (anim_ripple3_frame == 256 - step3) step3 = -4;
-    else if (anim_ripple3_frame == 0) step3 = 4;*/
-    anim_ripple3_frame += step3;
+    anim_ripple_frame += step;
 
     for (int i = 0; i < 4; ++i) {
         leds[ripple1[i]] = nblend(leds[ripple1[i]], CHSV(anim_ripple_hue, 200, 255), brightness1);
@@ -1196,6 +1271,25 @@ bool wipeOff() {
                 Serial.flush();
             }
         }
+    }
+}
+
+void colorHold() {
+    fill_solid(leds, NUM_LEDS, CHSV(anim_hold_hue, 200, 255));
+}
+
+void moodLight() {
+    static uint8_t hue = 0;
+    static int8_t hueFrame = 0;
+    static int8_t hueStep = 20;
+
+    fill_solid(leds, NUM_LEDS, CHSV(hue, 200, 255));
+    
+    // Iterate ripple hue
+    hueFrame++;
+    if (hueFrame == hueStep) {
+        ++hue;
+        hueFrame = 0;
     }
 }
 

@@ -33,10 +33,14 @@ commands = [
     "CMD_GX_CANCEL",
     "CMD_BINARY_TEST",
     "CMD_WIPE_ON",
-    "CMD_WIPE_OFF"
+    "CMD_WIPE_OFF",
+    "CMD_COLOR_HOLD",
+    "CMD_COLOR_HOLD_CANCEL",
+    "CMD_COLOR_RIPPLE",
+    "CMD_COLOR_RIPPLE_CANCEL"
 ]
 
-# Set FPS for graphics
+# Set FPS for graphics (max 24)
 FPS = 12
 
 s = sched.scheduler(time.time, time.sleep)
@@ -63,14 +67,16 @@ class App(Tk):
         self.appHues = {
             "default": 0,
             "com.snapchat.android": 64,
-            "com.pushbullet.android": 96
+            "com.pushbullet.android": 96,
+            "com.google.android.apps.inbox": 150
         }
         
         # 256 color schemes for apps
         self.app256Schemes = {
             "default": {"fg": 255, "bg": 0},
             "com.snapchat.android": {"fg": 252, "bg": 108},
-            "com.pushbullet.android": {"fg": 28, "bg": 8}
+            "com.pushbullet.android": {"fg": 28, "bg": 8},
+            "com.google.android.apps.inbox": {"fg": 11, "bg": 1}
         }
         
         self.quit = Button(
@@ -144,15 +150,41 @@ class App(Tk):
         self.color_breathe_blue = Button(frame, text="Color breathe (blue)", command=lambda: self.cmd_color_breathe(160))
         self.color_breathe_blue.grid(row=6, column=3, sticky=W+E)
         
-        self.wipe_on = Button(frame, text="Wipe on", command=lambda: self.cmd_wipe_on())
+        self.wipe_on = Button(frame, text="Wipe on", command=self.cmd_wipe_on)
         self.wipe_on.grid(row=2, column=0, sticky=W+E)
         
-        self.wipe_off = Button(frame, text="Cancel GX + wipe off", command=lambda: self.cmd_wipe_off())
+        self.wipe_off = Button(frame, text="Cancel GX + wipe off", command=self.cmd_wipe_off)
         self.wipe_off.grid(row=3, column=0, sticky=W+E)
+        
+        self.fps_scale = Scale(frame, from_=5, to=24, label="GX FPS", orient=HORIZONTAL)
+        self.fps_scale.grid(row=2, column=3, sticky=W+E)
+        self.fps_scale.set(FPS)
+        # w = Scale(master, from_=5, to=24, orient = HORIZONTAL)
+        
+        self.byte_scale = Scale(frame, from_=0, to=255, orient=HORIZONTAL)
+        self.byte_scale.grid(row=7, column=0, columnspan=3, sticky=W+E)
+        
+        self.color256_test = Button(frame, text="Send 8-bit color", command=lambda: self.cmd_color256_test(self.byte_scale.get()))
+        self.color256_test.grid(row=7, column=3, sticky=W+E)
+        
+        self.color_hold = Button(frame, text="Color hold", command=lambda: self.cmd_color_hold(self.byte_scale.get()))
+        self.color_hold.grid(row=8, column=0, sticky=W+E)
+        
+        self.color_hold_cancel = Button(frame, text="Cancel color hold", command=self.cmd_color_hold_cancel)
+        self.color_hold_cancel.grid(row=8, column=1, sticky=W+E)
+        
+        self.color_ripple = Button(frame, text="Color ripple", command=self.cmd_color_ripple)
+        self.color_ripple.grid(row=8, column=2, sticky=W+E)
+        
+        self.color_ripple_cancel = Button(frame, text="Cancel color ripple", command=self.cmd_color_ripple_cancel)
+        self.color_ripple_cancel.grid(row=8, column=3, sticky=W+E)
         
         # Ready signal (plus dramatic pause)
         # self.cmd_ready()
         # time.sleep(2)
+        
+        # Cancel color ripple
+        self.cmd_color_ripple_cancel()
         
         # Auto-schedule
         self.startSchedule()
@@ -447,14 +479,14 @@ class App(Tk):
                     # print(*result, sep='\n')
                     
                     # Sleep a little for FPS limiting
-                    time.sleep(1/FPS)
+                    time.sleep(1/self.fps_scale.get())
             
             # Flush input buffer
             self.arduino.comm.flushInput()
             
             totalTime = time.time() - start
             
-            print(" * * cmd_gx_ex: Thread", tid, "stopped. Desired FPS:", FPS, "Actual FPS:", frames / totalTime)
+            print(" * * cmd_gx_ex: Thread", tid, "stopped. Desired FPS:", self.fps_scale.get(), "Actual FPS:", frames / totalTime)
         
         # Generate thread ID
         # Can't use built-in thread ID as thread is started before ID can be saved
@@ -533,7 +565,7 @@ class App(Tk):
                     # print(*result, sep='\n')
                     
                     # Sleep a little for FPS limiting
-                    time.sleep(1/FPS)
+                    time.sleep(1/self.fps_scale.get())
             
             # Flush input buffer
             self.arduino.comm.flushInput()
@@ -543,7 +575,7 @@ class App(Tk):
             # Wipe off
             self.cmd_wipe_off(bg=34)
             
-            print(" * * cmd_text_test: Thread", tid, "stopped. Desired FPS:", FPS, "Actual FPS:", frames / totalTime)
+            print(" * * cmd_text_test: Thread", tid, "stopped. Desired FPS:", self.fps_scale.get(), "Actual FPS:", frames / totalTime)
         
         # Generate thread ID
         # Can't use built-in thread ID as thread is started before ID can be saved
@@ -589,7 +621,7 @@ class App(Tk):
                 self.sendCmd("CMD_GX", [num_leds] + leds)
                 
                 # Sleep a little for FPS limiting
-                time.sleep(1/FPS)
+                time.sleep(1/self.fps_scale.get())
         
         # Flush input buffer
         self.arduino.comm.flushInput()
@@ -648,6 +680,124 @@ class App(Tk):
         #   ?       foreground color (256) (not implemented)
         #   1       background color (256)
         self.sendCmd("CMD_WIPE_OFF", [bg]);
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_color256_test(self, color):
+        print(" * Testing 8-bit color...")
+        
+        def _thread(tid):
+            print(" * * cmd_color256_test: Thread", tid, "started.")
+            num_leds = 40
+            
+            # Run thread until priority is removed
+            if (tid == self.gxThread):
+                # Bytes use 8-bit color format:
+                # 
+                #       Bit     7  6  5  4  3  2  1  0
+                #       Data    R  R  R  G  G  G  B  B
+                #
+                # This allows the following values:
+                #
+                #       Red     0-7     << 5
+                #       Green   0-7     << 2
+                #       Blue    0-3     << 0
+                #
+                # Bitwise AND them together to get the 8-bit color.
+                
+                # Make array of num_leds 8-bit color pixels
+                leds = [color] * num_leds
+                
+                # Send command
+                # 
+                # Byte format:
+                #   0       CMD_GX
+                #   1       length
+                #   2-n     data bytes
+                self.sendCmd("CMD_GX", [num_leds] + leds)
+            
+            # Flush input buffer
+            self.arduino.comm.flushInput()
+            
+            print(" * * cmd_color256_test: Thread", tid, "stopped.")
+        
+        # Generate thread ID
+        # Can't use built-in thread ID as thread is started before ID can be saved
+        tid = "%04x" % random.randrange(0x0, 0xffff)
+        self.gxThread = tid
+        
+        # Initialize thread
+        print(" * Starting cmd_color256_test thread...")
+        watchdog = threading.Thread(target=lambda: _thread(tid))
+        watchdog.daemon = True
+        watchdog.start()
+    
+    def cmd_color_hold(self, hue):
+        print(" * CMD_COLOR_HOLD: Starting color hold...")
+        
+        # Send command
+        self.arduino.write(array.array('B', [
+            # Command header
+            commands.index("CMD_COLOR_HOLD"),
+            
+            # Hue
+            hue
+        ]).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_color_hold_cancel(self):
+        print(" * CMD_COLOR_HOLD_CANCEL: Cancelling color hold...")
+        
+        # Send command
+        self.arduino.write(array.array('B', [
+            # Command header
+            commands.index("CMD_COLOR_HOLD_CANCEL")
+        ]).tostring())
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_color_ripple(self):
+        print(" * CMD_COLOR_RIPPLE: Starting color ripple...")
+        
+        # Send command
+        self.sendCmd("CMD_COLOR_RIPPLE");
+        
+        # Wait for everything to write
+        self.arduino.comm.flush()
+        
+        # Read command
+        result = self.readCmd()
+        
+        # Output lines
+        print(*result, sep='\n')
+    
+    def cmd_color_ripple_cancel(self):
+        print(" * CMD_COLOR_RIPPLE_CANCEL: Canceling color ripple...")
+        
+        # Send command
+        self.sendCmd("CMD_COLOR_RIPPLE_CANCEL");
         
         # Wait for everything to write
         self.arduino.comm.flush()
