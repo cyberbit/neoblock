@@ -73,9 +73,8 @@ bool anim_wipe = false;
 uint32_t anim_wipe_fg = CRGB::White;
 uint32_t anim_wipe_bg = CRGB::Red;
 bool anim_wipeOn = false;
-int8_t anim_wipeOn_column = 7;
 bool anim_wipeOff = false;
-int8_t anim_wipeOff_column = 7;
+int8_t anim_wipe_column = 7;
 
 bool anim_gx = false;
 
@@ -840,7 +839,7 @@ void hCMD_WIPE_ON() {
     anim_wipeOff = false;
 
     // Set wipe column
-    anim_wipeOn_column = 7;
+    anim_wipe_column = 7;
 }
 
 void hCMD_WIPE_OFF() {
@@ -863,12 +862,13 @@ void hCMD_WIPE_OFF() {
     Serial.flush();
 
     // Set control flags
+    anim_gx = false;
     anim_wipe = true;
     anim_wipeOn = false;
     anim_wipeOff = true;
 
     // Set wipe column
-    anim_wipeOff_column = 7;
+    anim_wipe_column = 7;
 }
 
 void loop() {
@@ -1005,7 +1005,7 @@ void anim() {
                             anim_wipeOn = true;
                             anim_wipeOff = false;
 
-                            anim_wipeOn_column = anim_wipeOff_column = 7;
+                            anim_wipeOn_column = anim_wipe_column = 7;
                         }
                     }
                 }
@@ -1127,10 +1127,10 @@ bool wipeOn() {
     static int8_t frame = 0;
 
     // Make all pixels after column marker black
-    for (int i = anim_wipeOn_column; i < 8; ++i) {
+    for (int i = anim_wipe_column; i < 8; ++i) {
         for (int j = i; j < NUM_LEDS; j += 8) {
             // Column is white, pixels after are black
-            leds[j] = (i == anim_wipeOn_column ? anim_wipe_fg : anim_wipe_bg);
+            leds[j] = (i == anim_wipe_column ? anim_wipe_fg : anim_wipe_bg);
         }
     }
 
@@ -1142,8 +1142,8 @@ bool wipeOn() {
         frame = 0;
 
         // Keep animating until first column is reached
-        if (anim_wipeOn_column >= 0) {
-            --anim_wipeOn_column;
+        if (anim_wipe_column >= 0) {
+            --anim_wipe_column;
         }
 
         // Hold background color until wipeOff is called
@@ -1151,8 +1151,8 @@ bool wipeOn() {
             fill_solid(leds, NUM_LEDS, anim_wipe_bg);
 
             // Very last iteration, finish CMD_WIPE_ON
-            if (anim_wipeOn_column == -1) {
-                --anim_wipeOn_column;
+            if (anim_wipe_column == -1) {
+                --anim_wipe_column;
                 Serial.print(F("Done;END;\n"));
                 Serial.flush();
             }
@@ -1171,30 +1171,27 @@ bool wipeOff() {
     // Cancel wipeOn background hold
 //    anim_wipeOn = false;
 
-    // Cancel graphics (faster than running another command to do it)
-    anim_gx = false;
-
     // Make all pixels after column marker black
-    for (int i = anim_wipeOff_column; i >= 0; --i) {
+    for (int i = anim_wipe_column; i >= 0; --i) {
         for (int j = i; j < NUM_LEDS; j += 8) {
             // Column is white, pixels after are black
-            leds[j] = (i == anim_wipeOff_column ? anim_wipe_fg : anim_wipe_bg);
+            leds[j] = (i == anim_wipe_column ? anim_wipe_fg : anim_wipe_bg);
         }
     }
 
     if (++frame == frameSkip) {
         /*Serial.print("Wiping off... c ");
-        Serial.print(anim_wipeOff_column);
+        Serial.print(anim_wipe_column);
         Serial.print(", f ");
         Serial.println(frame);*/
         frame = 0;
 
         // Keep animating until first column is reached
-        if (anim_wipeOff_column >= 0) {
-            --anim_wipeOff_column;
+        if (anim_wipe_column >= 0) {
+            --anim_wipe_column;
 
             // Very last iteration, finish CMD_WIPE_OFF
-            if (anim_wipeOff_column < 0) {
+            if (anim_wipe_column < 0) {
                 Serial.print(F("Done;END;\n"));
                 Serial.flush();
             }

@@ -568,6 +568,9 @@ class App(Tk):
         num_leds = 40
         width = 8
         
+        # Wipe on
+        self.cmd_wipe_on(**options)
+        
         # Number of frames
         frames = nt.shape[1] - (width - 1)
         
@@ -591,8 +594,11 @@ class App(Tk):
         # Flush input buffer
         self.arduino.comm.flushInput()
         
+        # Wipe off
+        self.cmd_wipe_off(**options)
+        
         # Cancel graphics
-        self.cmd_gx_cancel()
+        # self.cmd_gx_cancel()
     
     def cmd_gx_cancel(self):
         print(" * CMD_GX_CANCEL: Cancelling graphics...")
@@ -769,11 +775,19 @@ class App(Tk):
                 # Save last push
                 self.push = push
                 
+                text = self.push['title']
+                
+                # Snapchat notification
+                if self.push['package_name'] == 'com.snapchat.android':
+                    text = self.push['body']
+                elif self.push['package_name'] == 'com.pushbullet.android':
+                    text = self.push['title']
+                
                 # Send color breathe
                 self.cmd_color_breathe(self.appToHue(self.push['package_name']))
                 
                 # Send text marquee
-                self.cmd_text(push['title'], self.appTo256Scheme(self.push['package_name']))
+                self.cmd_text(text, self.appTo256Scheme(self.push['package_name']))
             
             elif push['type'] == "dismissal":
                 print(" $ Dismissed notification!")
